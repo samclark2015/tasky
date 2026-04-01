@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { useTaskStore, useListStore, useUIStore } from '@/stores';
 import { Search as SearchIcon, X } from 'lucide-react';
 import { TaskItem } from '@/components/task/task-item';
+import { ViewHeader } from '@/components/layout/view-header';
 
 export function SearchView() {
   const { tasks } = useTaskStore();
@@ -24,25 +25,27 @@ export function SearchView() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-border flex items-center gap-3">
-        <SearchIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        <input
-          ref={inputRef}
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search tasks…"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      <ViewHeader>
+        <div className="flex items-center gap-3">
+          <SearchIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search tasks…"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </ViewHeader>
 
       <div className="flex-1 overflow-y-auto px-2 pt-2">
         {q && results.length === 0 && (

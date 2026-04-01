@@ -9,27 +9,24 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { sidebarOpen, detailsPanelOpen } = useUIStore();
+  const { sidebarOpen, detailsPanelOpen } = useUIStore(); // sidebarOpen used for aside width
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
       <aside
         className={cn(
           'flex-shrink-0 border-r border-sidebar-border bg-sidebar transition-all duration-200 flex flex-col',
-          sidebarOpen ? 'w-60' : 'w-0 overflow-hidden'
+          sidebarOpen ? 'w-60' : 'w-14'
         )}
       >
         <Sidebar />
       </aside>
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {/* drag region when sidebar is hidden — covers the traffic light area */}
-        {!sidebarOpen && (
-          <div
-            data-tauri-drag-region
-            className="drag-region h-8 flex-shrink-0 select-none"
-          />
-        )}
+        <div
+          data-tauri-drag-region
+          className="drag-region h-8 flex-shrink-0 select-none"
+        />
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {children}
         </div>

@@ -5,12 +5,13 @@ import {
   X, Trash2, Circle, CheckCircle2, Calendar, Flag, Tag,
   AlignLeft, Clock, List, ChevronRight, Plus,
 } from 'lucide-react';
-import { cn, formatDate, isOverdue } from '@/lib/utils';
+import { cn, formatDate, isOverdue, minutesToHHMM, hhmmToMinutes } from '@/lib/utils';
 import type { Task } from '@core/types';
 import { TaskModal } from '@/components/modals/task-modal';
 import { QuickAdd } from '@/components/task/quick-add';
 import { TaskItem } from '@/components/task/task-item';
 import { TagInput } from '@/components/task/tag-input';
+import { RecurrenceEditor } from '@/components/task/recurrence-editor';
 
 function InlineField({
   label, icon, value, onSave, type = 'text', placeholder,
@@ -198,20 +199,65 @@ export function DetailsPanel() {
               placeholder="Add a description…"
             />
 
-            {/* due date */}
+            {/* due date + time */}
             <div className="flex items-start gap-2.5">
               <Calendar className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-xs text-muted-foreground mb-0.5">Due date</p>
-                <input
-                  type="date"
-                  value={task.dueDate?.split('T')[0] ?? ''}
-                  onChange={(e) => save({ dueDate: e.target.value ? new Date(e.target.value + 'T00:00:00').toISOString() : null })}
-                  className={cn(
-                    'text-sm bg-transparent outline-none',
-                    task.dueDate && isOverdue(task.dueDate) && !task.completed && 'text-destructive'
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="date"
+                    value={task.dueDate ? (task.dueDate.includes('T') ? task.dueDate.split('T')[0] : task.dueDate) : ''}
+                    onChange={(e) => {
+                      const date = e.target.value;
+                      if (!date) { save({ dueDate: null }); return; }
+                      const existing = task.dueDate;
+                      if (existing?.includes('T')) {
+                        const d = new Date(existing);
+                        const newD = new Date(date);
+                        newD.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                        save({ dueDate: (d.getHours() !== 0 || d.getMinutes() !== 0) ? newD.toISOString() : date });
+                      } else {
+                        save({ dueDate: date });
+                      }
+                    }}
+                    className={cn(
+                      'text-sm bg-transparent outline-none [color-scheme:dark] dark:[color-scheme:dark]',
+                      task.dueDate && isOverdue(task.dueDate) && !task.completed && 'text-destructive'
+                    )}
+                  />
+                  {task.dueDate && (
+                    <input
+                      type="time"
+                      value={(() => {
+                        if (!task.dueDate?.includes('T')) return '';
+                        const d = new Date(task.dueDate);
+                        if (d.getHours() === 0 && d.getMinutes() === 0) return '';
+                        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                      })()}
+                      onChange={(e) => {
+                        const time = e.target.value;
+                        const dateStr = task.dueDate?.includes('T') ? task.dueDate.split('T')[0] : task.dueDate ?? '';
+                        if (!dateStr) return;
+                        if (!time) { save({ dueDate: dateStr }); return; }
+                        const [h, m] = time.split(':').map(Number);
+                        const d = new Date(dateStr);
+                        d.setHours(h, m, 0, 0);
+                        save({ dueDate: d.toISOString() });
+                      }}
+                      className="text-sm bg-transparent outline-none [color-scheme:dark] dark:[color-scheme:dark] w-28"
+                    />
                   )}
-                />
+                  {task.dueDate && (
+                    <button
+                      onClick={() => save({ dueDate: null })}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="Clear due date"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -263,13 +309,14 @@ export function DetailsPanel() {
             <div className="flex items-start gap-2.5">
               <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <p className="text-xs text-muted-foreground mb-0.5">Time estimate (min)</p>
+                <p className="text-xs text-muted-foreground mb-0.5">Time estimate</p>
                 <input
-                  type="number"
-                  value={task.timeEstimate != null ? Math.round(task.timeEstimate / 60) : ''}
-                  onChange={(e) => save({ timeEstimate: e.target.value ? parseInt(e.target.value) * 60 : null })}
-                  placeholder="—"
-                  min="0"
+                  key={task.id}
+                  type="text"
+                  defaultValue={task.timeEstimate != null ? minutesToHHMM(task.timeEstimate) : ''}
+                  onBlur={(e) => save({ timeEstimate: hhmmToMinutes(e.target.value) })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  placeholder="hh:mm"
                   className="text-sm bg-transparent outline-none w-24 placeholder:text-muted-foreground"
                 />
               </div>
@@ -281,6 +328,17 @@ export function DetailsPanel() {
               <div className="flex-1">
                 <p className="text-xs text-muted-foreground mb-1">Tags</p>
                 <TagInput tags={task.tags} onChange={(tags) => save({ tags })} />
+              </div>
+            </div>
+
+            {/* recurrence */}
+            <div className="flex items-start gap-2.5">
+              <div className="w-4 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <RecurrenceEditor
+                  value={task.recurrence}
+                  onChange={(rule) => save({ recurrence: rule })}
+                />
               </div>
             </div>
 

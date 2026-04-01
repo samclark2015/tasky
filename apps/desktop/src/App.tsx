@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useUIStore, type ViewType } from '@/stores';
+import { useTheme } from '@/components/theme-provider';
+import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { AppShell } from '@/components/layout';
 import { TodayView } from '@/views/today';
 import { InboxView } from '@/views/inbox';
@@ -23,7 +26,21 @@ function ViewRouter({ view }: { view: ViewType }) {
 
 export function App() {
   const { currentView, navigateTo, selectTask, setSearchQuery } = useUIStore();
+  const { theme, setTheme } = useTheme();
   const [showNewTask, setShowNewTask] = useState(false);
+
+  useEffect(() => {
+    invoke('sync_theme', { theme });
+  }, [theme]);
+
+  useEffect(() => {
+    const unlisten = listen<string>('set-theme', (e) => {
+      if (e.payload === 'light' || e.payload === 'dark' || e.payload === 'system') {
+        setTheme(e.payload);
+      }
+    });
+    return () => { unlisten.then(f => f()); };
+  }, [setTheme]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {

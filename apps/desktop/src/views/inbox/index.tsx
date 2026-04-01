@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { useTaskStore, useUIStore } from '@/stores';
+import { useTaskStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
-import { PanelLeftOpen, Inbox as InboxIcon, Plus } from 'lucide-react';
+import { Inbox as InboxIcon, Plus } from 'lucide-react';
+import { ViewHeader } from '@/components/layout/view-header';
 import { TaskItem } from '@/components/task/task-item';
 import { TaskModal } from '@/components/modals/task-modal';
 import { QuickAdd } from '@/components/task/quick-add';
 
 export function InboxView() {
   const { tasks, createTask } = useTaskStore();
-  const { toggleSidebar, sidebarOpen } = useUIStore();
   const { adapter } = useApp();
   const [showModal, setShowModal] = useState(false);
 
@@ -27,17 +27,8 @@ export function InboxView() {
   return (
     <>
       <div className="flex flex-col h-full">
-        <header className="flex items-center gap-3 px-4 py-4 border-b border-border flex-shrink-0">
-          {!sidebarOpen && (
-            <button
-              onClick={toggleSidebar}
-              className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-          )}
-          <h1 className="text-lg font-semibold flex-1">Inbox</h1>
-          <div className="flex items-center gap-2">
+        <ViewHeader actions={
+          <>
             <span className="text-sm text-muted-foreground">{inboxTasks.length} tasks</span>
             <button
               onClick={() => setShowModal(true)}
@@ -46,8 +37,10 @@ export function InboxView() {
               <Plus className="h-4 w-4" />
               Add
             </button>
-          </div>
-        </header>
+          </>
+        }>
+          <h1 className="text-lg font-semibold">Inbox</h1>
+        </ViewHeader>
 
         <div className="flex-1 overflow-y-auto">
           <div className="px-2 pt-2">

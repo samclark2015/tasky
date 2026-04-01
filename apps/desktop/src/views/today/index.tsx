@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { useTaskStore, useUIStore } from '@/stores';
+import { useTaskStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
 import { cn, isOverdue } from '@/lib/utils';
-import { PanelLeftOpen, CheckCircle2, Plus } from 'lucide-react';
+import { CheckCircle2, Plus } from 'lucide-react';
+import { ViewHeader } from '@/components/layout/view-header';
 import { TaskItem } from '@/components/task/task-item';
 import { TaskModal } from '@/components/modals/task-modal';
 import { QuickAdd } from '@/components/task/quick-add';
 
 export function TodayView() {
   const { tasks, createTask } = useTaskStore();
-  const { toggleSidebar, sidebarOpen } = useUIStore();
   const { adapter } = useApp();
   const [showModal, setShowModal] = useState(false);
 
@@ -35,22 +35,8 @@ export function TodayView() {
   return (
     <>
       <div className="flex flex-col h-full">
-        <header className="flex items-center gap-3 px-4 py-4 border-b border-border flex-shrink-0">
-          {!sidebarOpen && (
-            <button
-              onClick={toggleSidebar}
-              className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-          )}
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold">Today</h1>
-            <p className="text-xs text-muted-foreground">
-              {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+        <ViewHeader actions={
+          <>
             <span className="text-sm text-muted-foreground">
               {todayTasks.length + overdueTasks.length} remaining
             </span>
@@ -61,8 +47,15 @@ export function TodayView() {
               <Plus className="h-4 w-4" />
               Add
             </button>
+          </>
+        }>
+          <div>
+            <h1 className="text-lg font-semibold">Today</h1>
+            <p className="text-xs text-muted-foreground">
+              {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
           </div>
-        </header>
+        </ViewHeader>
 
         <div className="flex-1 overflow-y-auto">
           {overdueTasks.length > 0 && (

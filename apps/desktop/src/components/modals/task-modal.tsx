@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import type { Task } from '@core/types';
+import type { Task, RecurrenceRule } from '@core/types';
 import { useTaskStore, useListStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
-import { cn } from '@/lib/utils';
+import { cn, minutesToHHMM, hhmmToMinutes } from '@/lib/utils';
 import { X, Calendar, Tag, AlignLeft, Clock, Flag, List } from 'lucide-react';
 import { TagInput } from '@/components/task/tag-input';
+import { RecurrenceEditor } from '@/components/task/recurrence-editor';
 
 interface TaskModalProps {
   /** If provided, editing an existing task. If null, creating new. */
   task?: Task | null;
   /** Default values when creating */
-  defaults?: { listId?: string; dueDate?: string; parentId?: string };
+  defaults?: { listId?: string; dueDate?: string; parentId?: string; timeEstimate?: number };
   onClose: () => void;
 }
 
@@ -20,6 +21,27 @@ const PRIORITY_OPTIONS: { value: Task['priority']; label: string; color: string 
   { value: 'high', label: 'High', color: 'text-destructive' },
 ];
 
+function parseDueDate(dueDate: string | null | undefined): { date: string; time: string } {
+  if (!dueDate) return { date: '', time: '' };
+  if (dueDate.includes('T')) {
+    const d = new Date(dueDate);
+    const date = dueDate.split('T')[0];
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const hasRealTime = d.getHours() !== 0 || d.getMinutes() !== 0;
+    return { date, time: hasRealTime ? `${hours}:${mins}` : '' };
+  }
+  return { date: dueDate, time: '' };
+}
+
+function buildDueDate(date: string, time: string): string | null {
+  if (!date) return null;
+  if (!time) return date;
+  const [h, m] = time.split(':').map(Number);
+  const d = new Date(date);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+}
 
 export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   const { createTask, updateTask } = useTaskStore();
@@ -28,14 +50,19 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
 
   const [title, setTitle] = useState(task?.title ?? '');
   const [description, setDescription] = useState(task?.description ?? '');
-  const [dueDate, setDueDate] = useState(task?.dueDate?.split('T')[0] ?? defaults?.dueDate ?? '');
+  const parsed = parseDueDate(task?.dueDate ?? defaults?.dueDate);
+  const [dueDate, setDueDate] = useState(parsed.date);
+  const [dueTime, setDueTime] = useState(parsed.time);
   const [priority, setPriority] = useState<Task['priority']>(task?.priority ?? 'medium');
   const [listId, setListId] = useState(task?.listId ?? defaults?.listId ?? '');
   const [notes, setNotes] = useState(task?.notes ?? '');
   const [timeEstimate, setTimeEstimate] = useState(
-    task?.timeEstimate ? String(Math.round(task.timeEstimate / 60)) : ''
+    task?.timeEstimate ? minutesToHHMM(task.timeEstimate)
+      : defaults?.timeEstimate ? minutesToHHMM(defaults.timeEstimate)
+      : ''
   );
   const [tags, setTags] = useState<string[]>(task?.tags ?? []);
+  const [recurrence, setRecurrence] = useState<RecurrenceRule | null>(task?.recurrence ?? null);
   const [saving, setSaving] = useState(false);
 
   const titleRef = useRef<HTMLInputElement>(null);
@@ -45,30 +72,32 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
     if (!title.trim() || !adapter) return;
     setSaving(true);
     try {
-      const dueDateISO = dueDate ? new Date(dueDate + 'T00:00:00').toISOString() : null;
-      const estimateMinutes = timeEstimate ? parseInt(timeEstimate) * 60 : null;
+      const dueDateValue = buildDueDate(dueDate, dueTime);
+      const estimateMinutes = hhmmToMinutes(timeEstimate);
 
       if (task) {
         await updateTask(adapter, task.id, {
           title: title.trim(),
           description,
-          dueDate: dueDateISO,
+          dueDate: dueDateValue,
           priority,
           listId: listId || null,
           notes,
           tags,
           timeEstimate: estimateMinutes,
+          recurrence,
         });
       } else {
         await createTask(adapter, {
           title: title.trim(),
           description,
-          dueDate: dueDateISO,
+          dueDate: dueDateValue,
           priority,
           listId: listId || null,
           notes,
           tags,
           timeEstimate: estimateMinutes,
+          recurrence,
           parentId: defaults?.parentId ?? null,
         });
       }
@@ -81,6 +110,11 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') onClose();
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave();
+  }
+
+  function clearDueDate() {
+    setDueDate('');
+    setDueTime('');
   }
 
   return (
@@ -126,30 +160,45 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            {/* due date */}
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          {/* due date + time */}
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="text-sm bg-transparent outline-none text-foreground [color-scheme:dark] dark:[color-scheme:dark]"
+            />
+            {dueDate && (
               <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="flex-1 text-sm bg-transparent outline-none text-foreground [color-scheme:dark] dark:[color-scheme:dark] min-w-0"
+                type="time"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
+                placeholder="No time"
+                className="text-sm bg-transparent outline-none text-foreground [color-scheme:dark] dark:[color-scheme:dark] w-28"
               />
-            </div>
+            )}
+            {dueDate && (
+              <button
+                onClick={clearDueDate}
+                className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Clear due date"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
 
-            {/* time estimate */}
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <input
-                type="number"
-                value={timeEstimate}
-                onChange={(e) => setTimeEstimate(e.target.value)}
-                placeholder="Est. (min)"
-                min="0"
-                className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground w-full"
-              />
-            </div>
+          {/* time estimate */}
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <input
+              type="text"
+              value={timeEstimate}
+              onChange={(e) => setTimeEstimate(e.target.value)}
+              placeholder="hh:mm"
+              className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground w-full"
+            />
           </div>
 
           {/* priority */}
@@ -195,6 +244,9 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
             <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-1" />
             <TagInput tags={tags} onChange={setTags} className="flex-1" />
           </div>
+
+          {/* recurrence */}
+          <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
 
           {/* notes */}
           <div className="flex gap-2">

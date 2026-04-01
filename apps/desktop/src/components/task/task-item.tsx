@@ -5,6 +5,7 @@ import { useApp } from '@/components/app-provider';
 import { Circle, CheckCircle2, ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import type { Task } from '@core/types';
 import { QuickAdd } from './quick-add';
+import { TaskContextMenu } from './task-context-menu';
 
 interface TaskItemProps {
   task: Task;
@@ -19,6 +20,7 @@ export function TaskItem({ task, depth = 0, showList, listColor }: TaskItemProps
   const { adapter } = useApp();
   const [expanded, setExpanded] = useState(true);
   const [addingSubtask, setAddingSubtask] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const subtasks = getSubtasks(task.id);
   const hasSubtasks = subtasks.length > 0;
@@ -28,6 +30,12 @@ export function TaskItem({ task, depth = 0, showList, listColor }: TaskItemProps
     if (!adapter) return;
     createTask(adapter, { title, parentId: task.id, listId: task.listId });
     setAddingSubtask(false);
+  }
+
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
   }
 
   return (
@@ -40,6 +48,7 @@ export function TaskItem({ task, depth = 0, showList, listColor }: TaskItemProps
         )}
         style={{ paddingLeft: depth > 0 ? `${12 + depth * 20}px` : undefined }}
         onClick={() => selectTask(task.id)}
+        onContextMenu={handleContextMenu}
       >
         {/* expand toggle */}
         <button
@@ -141,6 +150,14 @@ export function TaskItem({ task, depth = 0, showList, listColor }: TaskItemProps
             </div>
           )}
         </>
+      )}
+
+      {contextMenu && (
+        <TaskContextMenu
+          task={task}
+          pos={contextMenu}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

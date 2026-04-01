@@ -27,6 +27,23 @@ export function isToday(date: string | null): boolean {
     d.getDate() === today.getDate();
 }
 
+export function minutesToHHMM(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+export function hhmmToMinutes(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  const [hPart, mPart] = trimmed.split(':');
+  const h = parseInt(hPart ?? '0', 10);
+  const m = parseInt(mPart ?? '0', 10);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
 export function isOverdue(date: string | null): boolean {
   if (!date) return false;
   const d = new Date(date);

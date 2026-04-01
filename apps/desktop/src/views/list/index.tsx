@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useTaskStore, useListStore, useUIStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
-import { PanelLeftOpen, Plus, MoreHorizontal } from 'lucide-react';
+import { Plus, MoreHorizontal } from 'lucide-react';
+import { ViewHeader } from '@/components/layout/view-header';
 import { TaskItem } from '@/components/task/task-item';
 import { TaskModal } from '@/components/modals/task-modal';
 import { ListModal } from '@/components/modals/list-modal';
@@ -10,7 +11,7 @@ import { QuickAdd } from '@/components/task/quick-add';
 export function ListView() {
   const { tasks, createTask } = useTaskStore();
   const { lists } = useListStore();
-  const { toggleSidebar, sidebarOpen, currentListId } = useUIStore();
+  const { currentListId } = useUIStore();
   const { adapter } = useApp();
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
@@ -40,21 +41,8 @@ export function ListView() {
   return (
     <>
       <div className="flex flex-col h-full">
-        <header className="flex items-center gap-3 px-4 py-4 border-b border-border flex-shrink-0">
-          {!sidebarOpen && (
-            <button
-              onClick={toggleSidebar}
-              className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-          )}
-          <span
-            className="h-3 w-3 rounded-full flex-shrink-0"
-            style={{ backgroundColor: list.color ?? '#6366f1' }}
-          />
-          <h1 className="text-lg font-semibold flex-1">{list.name}</h1>
-          <div className="flex items-center gap-2">
+        <ViewHeader actions={
+          <>
             <span className="text-sm text-muted-foreground">{activeTasks.length} tasks</span>
             <button
               onClick={() => setShowListModal(true)}
@@ -69,8 +57,16 @@ export function ListView() {
               <Plus className="h-4 w-4" />
               Add
             </button>
+          </>
+        }>
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="h-3 w-3 rounded-full flex-shrink-0"
+              style={{ backgroundColor: list.color ?? '#6366f1' }}
+            />
+            <h1 className="text-lg font-semibold truncate">{list.name}</h1>
           </div>
-        </header>
+        </ViewHeader>
 
         <div className="flex-1 overflow-y-auto">
           <div className="px-2 pt-2">
