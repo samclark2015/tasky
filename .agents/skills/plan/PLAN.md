@@ -95,6 +95,19 @@ interface Task {
   etag: string | null;
   caldavUid: string | null;
   syncStatus: 'synced' | 'pending' | 'conflict';
+  sourceEventUid: string | null; // UID of originating VEVENT if promoted from calendar event
+}
+
+interface CalendarEvent {
+  uid: string;
+  calendarHref: string;    // CalDAV calendar this event belongs to
+  title: string;
+  start: Date;
+  end: Date | null;
+  allDay: boolean;
+  description: string;
+  location: string | null;
+  color: string | null;
 }
 ```
 
@@ -106,6 +119,10 @@ interface Task {
 - [ ] Today view showing tasks due today
 - [ ] Inbox view for unassigned tasks
 - [ ] Calendar view (day/week/month)
+- [ ] Calendar view shows CalDAV calendar events (VEVENTs) read-only alongside tasks
+- [ ] Per-calendar visibility toggles on calendar view
+- [ ] Click calendar event → event detail popover with "Add to Tasks" action
+- [ ] "Add to Tasks" promotes event to task (pre-filled, syncs back as VTODO)
 - [ ] Planner view with drag-to-schedule
 - [ ] Recurring tasks
 - [ ] CalDAV sync with Fastmail/iCloud/standard servers

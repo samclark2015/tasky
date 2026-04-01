@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** Phase 4 Complete  
+**Phase:** Phase 4 – Calendar Event Display (in progress)  
 **Last Updated:** April 1, 2026
 
 ## Phase Completion
@@ -10,7 +10,7 @@
 - [x] Phase 1: Foundation
 - [x] Phase 2: Core Task Management
 - [x] Phase 3: Calendar & Planner Views
-- [x] Phase 4: CalDAV Sync
+- [~] Phase 4: CalDAV Sync (VTODO sync complete; VEVENT display + promote-to-task pending)
 - [ ] Phase 5: Polish & Notifications
 
 ## Detailed Progress
@@ -71,6 +71,13 @@
 - [x] Sync status indicator in sidebar (Wifi/WifiOff icons + spinning on sync)
 - [x] Settings nav item in sidebar footer
 - [x] syncAll loads all enabled accounts, syncs each calendar in sequence
+- [ ] VEVENT fetch command (caldav_fetch_events) for calendar view display
+- [ ] CalendarEvent type + events Zustand store slice
+- [ ] Calendar view: render VEVENTs read-only alongside task events
+- [ ] Per-calendar visibility toggles
+- [ ] Event detail popover with "Add to Tasks" action
+- [ ] Promote VEVENT → Task (pre-fill from event, store sourceEventUid, sync as VTODO)
+- [ ] source_event_uid DB column + X-TASKY-SOURCE-EVENT-UID VTODO property
 
 ### Phase 5: Polish & Notifications
 - [ ] System notifications
@@ -127,3 +134,11 @@ None currently.
 - Over-schedule warning threshold: 8h of estimated time in a single day
 - RecurrenceEditor is a standalone component used in both TaskModal and DetailsPanel
 - Recurrence stored as `RecurrenceRule` on the Task; instance generation deferred to Phase 4/5
+- **VEVENT design decisions (pending implementation):**
+  - VEVENTs fetched on-demand per visible date range; not persisted to SQLite
+  - Stored in a `events` Zustand slice (keyed `calendarHref:uid`)
+  - FullCalendar `extendedProps.type` distinguishes `'task'` vs `'event'` in eventClick handler
+  - VEVENTs are non-editable/non-draggable; click opens EventDetailPopover (not DetailsPanel)
+  - "Add to Tasks" pre-fills TaskModal; saved task gets `sourceEventUid` for deduplication
+  - Promoted task syncs as VTODO on next CalDAV sync; original VEVENT untouched on server
+  - `source_event_uid` added to tasks table via migration; serialized as `X-TASKY-SOURCE-EVENT-UID` in VTODO

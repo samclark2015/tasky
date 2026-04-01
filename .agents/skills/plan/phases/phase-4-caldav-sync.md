@@ -42,6 +42,7 @@
 - [ ] Discover calendar-home-set
 - [ ] List available calendars
 - [ ] Filter to calendars supporting VTODO
+- [ ] **Also surface calendars supporting VEVENT** (may overlap; same calendar can hold both)
 - [ ] Map CalDAV calendars to local lists
 - [ ] Create local list for each calendar
 - [ ] Handle calendar colors and names
@@ -57,6 +58,7 @@
   - [ ] RRULE ↔ recurrence
   - [ ] STATUS ↔ completed
   - [ ] RELATED-TO ↔ parentId (subtasks)
+  - [ ] X-TASKY-SOURCE-EVENT-UID ↔ sourceEventUid (for promoted events)
 - [ ] Create new task on server (PUT)
 - [ ] Update existing task (PUT with ETag)
 - [ ] Delete task on server (DELETE)
@@ -68,6 +70,16 @@
 - [ ] Update existing local tasks
 - [ ] Delete local tasks removed from server
 - [ ] Handle tasks not in local database
+
+### 4.5b Calendar Event Fetch (VEVENT, read-only)
+- [ ] `caldav_fetch_events` Rust command: REPORT with VEVENT component filter for a date range
+- [ ] Parse VEVENT fields: UID, SUMMARY, DTSTART, DTEND/DURATION, DESCRIPTION, LOCATION, COLOR
+- [ ] Return `Vec<CalendarEvent>` to frontend (not persisted to SQLite)
+- [ ] Frontend fetches events whenever visible date range changes (calendar view navigation)
+- [ ] Events stored in a dedicated Zustand `events` store slice (keyed by calendarHref + uid)
+- [ ] CalendarEvent → FullCalendar EventInput mapping with `extendedProps.type = 'event'`
+- [ ] Events are non-editable/non-draggable on the calendar
+- [ ] Per-account/per-calendar visibility toggle persisted to localStorage
 
 ### 4.6 Sync Engine
 - [ ] Track sync status per task (synced, pending, conflict)
@@ -100,6 +112,8 @@ By the end of Phase 4:
 - ✅ Tasks sync from server to local
 - ✅ Conflicts resolved automatically
 - ✅ Works offline with sync on reconnect
+- [ ] Calendar events (VEVENTs) fetched and displayed read-only on calendar view
+- [ ] "Add to Tasks" promotes a calendar event to a task that syncs back as VTODO
 
 ## Technical Notes
 
@@ -165,3 +179,13 @@ END:VCALENDAR
 | iCloud | `https://caldav.icloud.com/` (requires app-specific password) |
 | Nextcloud | `https://{server}/remote.php/dav/principals/users/{user}/` |
 | Generic | Try `/.well-known/caldav` discovery |
+
+### VEVENT Fetching Notes
+
+- Use a REPORT request with `<comp-filter name="VEVENT"/>` to fetch only events (separate from VTODO sync)
+- Fetch is scoped to the visible date range (`<time-range start="..." end="..."/>`) to avoid pulling entire calendar history
+- VEVENTs are **never** written back to the server (read-only); only promoted VTODOs are written
+- `caldav_fetch_events` command accepts `(account_id, calendar_href, range_start, range_end)` and returns `Vec<CalendarEvent>`
+- Recurring VEVENTs: expand instances server-side via `<expand start="..." end="..."/>` in the REPORT so the frontend receives concrete occurrences, not RRULEs
+- `sourceEventUid` on a promoted Task is stored locally as `source_event_uid TEXT` column and serialized as `X-TASKY-SOURCE-EVENT-UID` in VTODO for round-trip fidelity
+- Deduplication: before showing "Add to Tasks", query local tasks for `source_event_uid = event.uid`; if found, show "Already a task" with a link to it
