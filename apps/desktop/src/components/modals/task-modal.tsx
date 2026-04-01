@@ -163,12 +163,19 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
           {/* due date + time */}
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="text-sm bg-transparent outline-none text-foreground [color-scheme:dark] dark:[color-scheme:dark]"
-            />
+            {dueDate ? (
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="text-sm bg-transparent outline-none text-foreground [color-scheme:dark] dark:[color-scheme:dark]"
+              />
+            ) : (
+              <label className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+                No due date
+                <input type="date" value="" onChange={(e) => setDueDate(e.target.value)} className="sr-only" />
+              </label>
+            )}
             {dueDate && (
               <input
                 type="time"

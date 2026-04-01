@@ -78,7 +78,8 @@ pub fn run() {
                     let items = menu.items()?;
                     let end_pos = items.len().saturating_sub(1);
                     let reset_item = MenuItem::with_id(app, "reset_db", "Reset Database", true, None::<&str>)?;
-                    let dev_menu = Submenu::with_items(app, "Developer", true, &[&reset_item])?;
+                    let reload_item = MenuItem::with_id(app, "reload_window", "Reload", true, None::<&str>)?;
+                    let dev_menu = Submenu::with_items(app, "Developer", true, &[&reset_item, &reload_item])?;
                     menu.insert(&dev_menu, end_pos)?;
                 }
             }
@@ -114,6 +115,10 @@ pub fn run() {
                             }
                         }
                         Err(e) => eprintln!("[dev] Failed to reset database: {e}"),
+                    }
+                } else if event.id() == "reload_window" {
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _: tauri::Result<()> = win.eval("location.reload()");
                     }
                 }
             });

@@ -205,27 +205,34 @@ export function DetailsPanel() {
               <div className="flex-1">
                 <p className="text-xs text-muted-foreground mb-0.5">Due date</p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <input
-                    type="date"
-                    value={task.dueDate ? (task.dueDate.includes('T') ? task.dueDate.split('T')[0] : task.dueDate) : ''}
-                    onChange={(e) => {
-                      const date = e.target.value;
-                      if (!date) { save({ dueDate: null }); return; }
-                      const existing = task.dueDate;
-                      if (existing?.includes('T')) {
-                        const d = new Date(existing);
-                        const newD = new Date(date);
-                        newD.setHours(d.getHours(), d.getMinutes(), 0, 0);
-                        save({ dueDate: (d.getHours() !== 0 || d.getMinutes() !== 0) ? newD.toISOString() : date });
-                      } else {
-                        save({ dueDate: date });
-                      }
-                    }}
-                    className={cn(
-                      'text-sm bg-transparent outline-none [color-scheme:dark] dark:[color-scheme:dark]',
-                      task.dueDate && isOverdue(task.dueDate) && !task.completed && 'text-destructive'
-                    )}
-                  />
+                  {task.dueDate ? (
+                    <input
+                      type="date"
+                      value={task.dueDate.includes('T') ? task.dueDate.split('T')[0] : task.dueDate}
+                      onChange={(e) => {
+                        const date = e.target.value;
+                        if (!date) { save({ dueDate: null }); return; }
+                        const existing = task.dueDate;
+                        if (existing?.includes('T')) {
+                          const d = new Date(existing);
+                          const newD = new Date(date);
+                          newD.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                          save({ dueDate: (d.getHours() !== 0 || d.getMinutes() !== 0) ? newD.toISOString() : date });
+                        } else {
+                          save({ dueDate: date });
+                        }
+                      }}
+                      className={cn(
+                        'text-sm bg-transparent outline-none [color-scheme:dark] dark:[color-scheme:dark]',
+                        isOverdue(task.dueDate) && !task.completed && 'text-destructive'
+                      )}
+                    />
+                  ) : (
+                    <label className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+                      No due date
+                      <input type="date" value="" onChange={(e) => { if (e.target.value) save({ dueDate: e.target.value }); }} className="sr-only" />
+                    </label>
+                  )}
                   {task.dueDate && (
                     <input
                       type="time"

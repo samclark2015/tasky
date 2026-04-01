@@ -1,5 +1,5 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/schema/acl/capability.json",
+  "$schema": "../gen/schemas/macOS-schema.json",
   "identifier": "default",
   "description": "Default Tasky capabilities",
   "windows": [
