@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Vite
+*.js.map
+vite.config.d.ts
+vite.config.js
+
+# Tauri
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/android/
+apps/desktop/src-tauri/gen/apple/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.crush/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*

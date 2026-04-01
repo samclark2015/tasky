@@ -1,0 +1,21 @@
+{
+  "name": "tasky",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "pnpm --filter @tasky/desktop dev",
+    "build": "pnpm --filter @tasky/desktop build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@tauri-apps/cli"
+    ]
+  }
+}
