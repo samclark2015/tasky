@@ -1,5 +1,5 @@
 ---
-name: Multi-Phase Project Planning
+name: planning
 description: Structure a complex software project into a phased plan with a master plan document, a living progress tracker, and per-phase detail files so any agent can understand current state and continue work across sessions.
 ---
 
@@ -12,7 +12,7 @@ Structures a complex software project into a phased plan with a master plan docu
 ## Directory Layout
 
 ```
-.agents/skills/plan/
+.agents/skills/planing/
 ├── PLAN.md          - Master plan: tech stack, architecture decisions, data model, phase overview
 ├── PROGRESS.md      - Living tracker: completed work, current phase, implementation notes, blockers
 └── phases/          - One file per phase with full task breakdown and technical guidance
