@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { Task, RecurrenceRule } from '@core/types';
 import { useTaskStore, useListStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
-import { cn, minutesToHHMM, hhmmToMinutes } from '@/lib/utils';
+import { cn, minutesToHHMM, hhmmToMinutes, localDateFromString } from '@/lib/utils';
 import { X, Calendar, Tag, AlignLeft, Clock, Flag, List } from 'lucide-react';
 import { TagInput } from '@/components/task/tag-input';
 import { RecurrenceEditor } from '@/components/task/recurrence-editor';
@@ -38,9 +38,7 @@ function buildDueDate(date: string, time: string): string | null {
   if (!date) return null;
   if (!time) return date;
   const [h, m] = time.split(':').map(Number);
-  const d = new Date(date);
-  d.setHours(h, m, 0, 0);
-  return d.toISOString();
+  return localDateFromString(date, h, m).toISOString();
 }
 
 export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
@@ -53,6 +51,7 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   const parsed = parseDueDate(task?.dueDate ?? defaults?.dueDate);
   const [dueDate, setDueDate] = useState(parsed.date);
   const [dueTime, setDueTime] = useState(parsed.time);
+  const [allDay, setAllDay] = useState(!parsed.time);
   const [priority, setPriority] = useState<Task['priority']>(task?.priority ?? 'medium');
   const [listId, setListId] = useState(task?.listId ?? defaults?.listId ?? '');
   const [notes, setNotes] = useState(task?.notes ?? '');
@@ -115,6 +114,12 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   function clearDueDate() {
     setDueDate('');
     setDueTime('');
+    setAllDay(true);
+  }
+
+  function handleAllDayToggle(checked: boolean) {
+    setAllDay(checked);
+    if (checked) setDueTime('');
   }
 
   return (
@@ -161,7 +166,7 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
           </div>
 
           {/* due date + time */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             {dueDate ? (
               <input
@@ -173,10 +178,21 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
             ) : (
               <label className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
                 No due date
-                <input type="date" value="" onChange={(e) => setDueDate(e.target.value)} className="sr-only" />
+                <input type="date" value="" onChange={(e) => { setDueDate(e.target.value); setAllDay(true); }} className="sr-only" />
               </label>
             )}
             {dueDate && (
+              <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allDay}
+                  onChange={(e) => handleAllDayToggle(e.target.checked)}
+                  className="rounded"
+                />
+                All day
+              </label>
+            )}
+            {dueDate && !allDay && (
               <input
                 type="time"
                 value={dueTime}

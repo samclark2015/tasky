@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** Phase 3 Complete  
+**Phase:** Phase 4 Complete  
 **Last Updated:** April 1, 2026
 
 ## Phase Completion
@@ -10,7 +10,7 @@
 - [x] Phase 1: Foundation
 - [x] Phase 2: Core Task Management
 - [x] Phase 3: Calendar & Planner Views
-- [ ] Phase 4: CalDAV Sync
+- [x] Phase 4: CalDAV Sync
 - [ ] Phase 5: Polish & Notifications
 
 ## Detailed Progress
@@ -55,14 +55,22 @@
 - [x] Recurrence rule editor component (daily/weekly/monthly/yearly, interval, day-of-week picker, end conditions)
 - [x] Recurrence integrated into TaskModal (create/edit) and DetailsPanel (inline)
 
-### Phase 4: CalDAV Sync
-- [ ] CalDAV client library
-- [ ] Server connection UI
-- [ ] Calendar discovery
-- [ ] Task sync (local → remote)
-- [ ] Task sync (remote → local)
-- [ ] Conflict resolution
-- [ ] Sync status indicators
+### Phase 4: CalDAV Sync ✅
+- [x] CalDAV client library (libdav 0.10 + icalendar 0.17 via Rust)
+- [x] DB migration: caldav_accounts + caldav_calendar_map tables + indexes
+- [x] CalDavAccount / CalDavCalendarMap / DiscoveredCalendar / SyncResult types in @tasky/core
+- [x] caldav_accounts + caldav_calendar_map repositories in @tasky/db
+- [x] Rust commands: caldav_test_connection, caldav_discover_calendars, caldav_sync_account
+- [x] iCalendar VTODO parse + generate (ical.rs) with X-TASKY-* extensions
+- [x] Server connection UI (Settings view with add/edit/remove accounts)
+- [x] Calendar discovery (PROPFIND → principal → home-set → FindCalendars)
+- [x] Link/unlink calendars to local lists
+- [x] Task sync local → remote (PUT with ETag conditional updates)
+- [x] Task sync remote → local (ListCalendarResources + GetCalendarResources)
+- [x] Conflict resolution: last-write-wins via updatedAt timestamp
+- [x] Sync status indicator in sidebar (Wifi/WifiOff icons + spinning on sync)
+- [x] Settings nav item in sidebar footer
+- [x] syncAll loads all enabled accounts, syncs each calendar in sequence
 
 ### Phase 5: Polish & Notifications
 - [ ] System notifications
@@ -97,7 +105,19 @@ None currently.
 - Cascade delete: SQLite ON DELETE CASCADE for DB + in-memory recursive removal
 - Keyboard shortcuts: n=new task, 1-4=navigate, Cmd+F=search, Escape=deselect task
 
-### Phase 3 Implementation Notes
+### Phase 4 Implementation Notes
+- Libraries: `libdav` 0.10 (CalDAV HTTP) + `icalendar` 0.17 (VTODO parse/generate); no hand-rolled DAV
+- Type alias `TaskyCalDavClient` avoids unnameable return type for `make_client()`
+- `PutResource::new(href).create(data, content_type)` / `.update(data, content_type, etag)` — data passed at mode selection, not construction
+- `Delete<WithEtag>` and `Delete<Force>` are distinct types; conditional deletion uses two separate `client.request()` calls in each match arm
+- `ListCalendarResources::with_component()` returns `Result`; must be unwrapped before passing to `client.request()`
+- FoundCollection (calendar discovery) only has href/etag/supports_sync; display names fetched separately via PROPFIND if needed
+- VTODO DUE date: CalendarDateTime enum (Floating/Utc/WithTimezone) — each variant handled explicitly
+- Custom VTODO properties: X-TASKY-NOTES, X-TASKY-TIME-ESTIMATE for round-tripping Tasky-specific fields
+- Credentials stored in SQLite (plaintext for MVP); encrypt pre-ship via Tauri secure storage
+- Sync runs entirely in Rust async tasks; frontend only passes task data via invoke()
+- Subtask syncing: only root tasks (parentId === null) pushed to CalDAV (RELATED-TO used for linking)
+- Periodic auto-sync: not yet implemented (Phase 5)
 - FullCalendar v6 injects CSS via JS bundle; no separate CSS imports needed
 - FullCalendar themed via CSS custom properties in `.fc-wrapper` container class
 - `DateClickArg` is exported from `@fullcalendar/interaction`, not `@fullcalendar/core`

@@ -23,6 +23,17 @@ tauri-plugin-sql = { version = "2.0", features = ["sqlite"] }
 tauri-plugin-notification = { version = "2.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+libdav = "0.10"
+icalendar = { version = "0.17", features = ["parser"] }
+hyper = { version = "1", features = ["full"] }
+hyper-rustls = { version = "0.27", features = ["native-tokio", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "tokio"] }
+tower-service = "0.3"
+tower-http = { version = "0.6", features = ["auth"] }
+http = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

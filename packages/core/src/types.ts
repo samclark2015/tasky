@@ -48,3 +48,42 @@ export interface AppSettings {
   detailsPanelWidth: number;
   defaultListId: string | null;
 }
+
+export interface CalDavAccount {
+  id: string;
+  displayName: string;
+  serverUrl: string;
+  username: string;
+  password: string;
+  lastSyncedAt: string | null;
+  syncEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NewCalDavAccount = Omit<CalDavAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>;
+
+export interface CalDavCalendarMap {
+  listId: string;
+  accountId: string;
+  calendarHref: string;
+  syncToken: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiscoveredCalendar {
+  href: string;
+  displayName: string | null;
+  color: string | null;
+  supportsSync: boolean;
+}
+
+export interface SyncResult {
+  accountId: string;
+  created: number;
+  updated: number;
+  deleted: number;
+  conflicts: number;
+  errors: string[];
+}

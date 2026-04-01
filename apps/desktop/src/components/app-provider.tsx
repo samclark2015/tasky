@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { DatabaseAdapter } from '@db/repository';
 import { runMigrations } from '@db/migrate';
 import { getDatabase, createAdapter } from '@/lib/database';
-import { useTaskStore, useListStore } from '@/stores';
+import { useTaskStore, useListStore, useSyncStore } from '@/stores';
 
 interface AppContextValue {
   adapter: DatabaseAdapter | null;
@@ -28,6 +28,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await Promise.all([
           useTaskStore.getState().loadTasks(adp),
           useListStore.getState().loadLists(adp),
+          useSyncStore.getState().loadAccounts(adp),
         ]);
 
         setReady(true);

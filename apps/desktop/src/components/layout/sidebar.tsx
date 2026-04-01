@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { useUIStore, useListStore, type ViewType } from '@/stores';
+import { useUIStore, useListStore, useSyncStore, type ViewType } from '@/stores';
 import {
   CalendarDays,
   CheckSquare,
@@ -11,8 +11,14 @@ import {
   Plus,
   MoreHorizontal,
   Search,
+  Settings,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { ListModal } from '@/components/modals/list-modal';
+import { useApp } from '@/components/app-provider';
+import { useTaskStore } from '@/stores/tasks';
 import type { TaskList } from '@core/types';
 
 interface NavItem {
@@ -51,9 +57,23 @@ function useTooltip() {
 export function Sidebar() {
   const { currentView, currentListId, navigateTo, toggleSidebar, sidebarOpen } = useUIStore();
   const { lists } = useListStore();
+  const { syncStatus, isSyncing, syncAll } = useSyncStore();
+  const { tasks } = useTaskStore();
+  const { adapter } = useApp();
   const [showNewList, setShowNewList] = useState(false);
   const [editingList, setEditingList] = useState<TaskList | null>(null);
   const { tooltip, show, hide } = useTooltip();
+
+  function handleSync() {
+    if (!adapter) return;
+    syncAll(
+      adapter,
+      Array.from(tasks.values()),
+      lists,
+      () => useTaskStore.getState().loadTasks(adapter),
+      () => useListStore.getState().loadLists(adapter),
+    );
+  }
 
   return (
     <>
@@ -175,9 +195,84 @@ export function Sidebar() {
 
         {/* Footer */}
         <div className={cn(
-          'py-2 border-t border-sidebar-border flex',
-          sidebarOpen ? 'px-2 items-center' : 'px-1.5 flex-col items-center gap-1'
+          'py-2 border-t border-sidebar-border flex flex-col gap-0.5',
+          sidebarOpen ? 'px-2' : 'px-1.5 items-center'
         )}>
+          {/* Sync status button */}
+          {sidebarOpen ? (
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className={cn(
+                'flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors w-full',
+                syncStatus === 'error'
+                  ? 'text-destructive hover:bg-destructive/10'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent/60'
+              )}
+            >
+              {isSyncing ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : syncStatus === 'error' ? (
+                <WifiOff className="h-4 w-4" />
+              ) : (
+                <Wifi className="h-4 w-4" />
+              )}
+              {isSyncing ? 'Syncing…' : syncStatus === 'error' ? 'Sync error' : 'Sync'}
+            </button>
+          ) : (
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              onMouseEnter={(e) => show(e, 'Sync')}
+              onMouseLeave={hide}
+              className={cn(
+                'w-full flex justify-center p-2 rounded-md transition-colors',
+                syncStatus === 'error'
+                  ? 'text-destructive hover:bg-destructive/10'
+                  : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60'
+              )}
+            >
+              {isSyncing ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : syncStatus === 'error' ? (
+                <WifiOff className="h-4 w-4" />
+              ) : (
+                <Wifi className="h-4 w-4" />
+              )}
+            </button>
+          )}
+
+          {/* Settings */}
+          {sidebarOpen ? (
+            <button
+              onClick={() => navigateTo('settings')}
+              className={cn(
+                'flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors w-full',
+                currentView === 'settings'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent/60'
+              )}
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </button>
+          ) : (
+            <button
+              onClick={() => navigateTo('settings')}
+              onMouseEnter={(e) => show(e, 'Settings')}
+              onMouseLeave={hide}
+              className={cn(
+                'w-full flex justify-center p-2 rounded-md transition-colors',
+                currentView === 'settings'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/60'
+              )}
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          )}
+
+          {/* New List */}
           {sidebarOpen ? (
             <button
               className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors"

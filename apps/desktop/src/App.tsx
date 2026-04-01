@@ -10,6 +10,7 @@ import { CalendarView } from '@/views/calendar';
 import { PlannerView } from '@/views/planner';
 import { ListView } from '@/views/list';
 import { SearchView } from '@/views/search';
+import { SettingsView } from '@/views/settings';
 import { TaskModal } from '@/components/modals/task-modal';
 
 function ViewRouter({ view }: { view: ViewType }) {
@@ -20,6 +21,7 @@ function ViewRouter({ view }: { view: ViewType }) {
     case 'planner':  return <PlannerView />;
     case 'list':     return <ListView />;
     case 'search':   return <SearchView />;
+    case 'settings': return <SettingsView />;
     default:         return <TodayView />;
   }
 }

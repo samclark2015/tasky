@@ -74,12 +74,19 @@ export const useTaskStore = create<TaskStore>()(
 
     async updateTask(adapter, id, updates) {
       const repo = createTaskRepository(adapter);
-      await repo.update(id, updates);
+      // If the caller didn't explicitly set syncStatus and the task is linked to
+      // CalDAV, mark it pending so the next sync pushes the change.
+      const existing = get().tasks.get(id);
+      const effectiveUpdates =
+        updates.syncStatus === undefined && existing?.caldavUid
+          ? { ...updates, syncStatus: 'pending' as const }
+          : updates;
+      await repo.update(id, effectiveUpdates);
       set((state) => {
         const tasks = new Map(state.tasks);
-        const existing = tasks.get(id);
-        if (existing) {
-          tasks.set(id, { ...existing, ...updates, updatedAt: new Date().toISOString() });
+        const cur = tasks.get(id);
+        if (cur) {
+          tasks.set(id, { ...cur, ...effectiveUpdates, updatedAt: new Date().toISOString() });
         }
         return { tasks };
       });

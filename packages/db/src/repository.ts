@@ -1,4 +1,4 @@
-import type { Task, TaskList, NewTask, NewTaskList } from '@tasky/core';
+import type { Task, TaskList, NewTask, NewTaskList, CalDavAccount, CalDavCalendarMap } from '@tasky/core';
 
 export interface DatabaseAdapter {
   execute(sql: string, params?: unknown[]): Promise<void>;
@@ -215,4 +215,151 @@ export async function setSetting(db: DatabaseAdapter, key: string, value: string
     'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
     [key, value]
   );
+}
+
+function rowToAccount(row: Record<string, unknown>): CalDavAccount {
+  return {
+    id: row.id as string,
+    displayName: row.display_name as string,
+    serverUrl: row.server_url as string,
+    username: row.username as string,
+    password: row.password as string,
+    lastSyncedAt: (row.last_synced_at as string | null) ?? null,
+    syncEnabled: Boolean(row.sync_enabled),
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function rowToCalendarMap(row: Record<string, unknown>): CalDavCalendarMap {
+  return {
+    listId: row.list_id as string,
+    accountId: row.account_id as string,
+    calendarHref: row.calendar_href as string,
+    syncToken: (row.sync_token as string | null) ?? null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+export function createAccountRepository(db: DatabaseAdapter) {
+  return {
+    async getAll(): Promise<CalDavAccount[]> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM caldav_accounts ORDER BY display_name ASC'
+      );
+      return rows.map(rowToAccount);
+    },
+
+    async getById(id: string): Promise<CalDavAccount | null> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM caldav_accounts WHERE id = ?',
+        [id]
+      );
+      return rows.length > 0 ? rowToAccount(rows[0]) : null;
+    },
+
+    async create(account: CalDavAccount): Promise<void> {
+      const now = new Date().toISOString();
+      await db.execute(
+        `INSERT INTO caldav_accounts
+         (id, display_name, server_url, username, password, last_synced_at, sync_enabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          account.id,
+          account.displayName,
+          account.serverUrl,
+          account.username,
+          account.password,
+          account.lastSyncedAt ?? null,
+          account.syncEnabled ? 1 : 0,
+          now,
+          now,
+        ]
+      );
+    },
+
+    async update(id: string, updates: Partial<CalDavAccount>): Promise<void> {
+      const now = new Date().toISOString();
+      const fields: string[] = [];
+      const values: unknown[] = [];
+
+      if (updates.displayName !== undefined) { fields.push('display_name = ?'); values.push(updates.displayName); }
+      if (updates.serverUrl !== undefined) { fields.push('server_url = ?'); values.push(updates.serverUrl); }
+      if (updates.username !== undefined) { fields.push('username = ?'); values.push(updates.username); }
+      if (updates.password !== undefined) { fields.push('password = ?'); values.push(updates.password); }
+      if (updates.lastSyncedAt !== undefined) { fields.push('last_synced_at = ?'); values.push(updates.lastSyncedAt); }
+      if (updates.syncEnabled !== undefined) { fields.push('sync_enabled = ?'); values.push(updates.syncEnabled ? 1 : 0); }
+
+      if (fields.length === 0) return;
+
+      fields.push('updated_at = ?');
+      values.push(now);
+      values.push(id);
+
+      await db.execute(
+        `UPDATE caldav_accounts SET ${fields.join(', ')} WHERE id = ?`,
+        values
+      );
+    },
+
+    async delete(id: string): Promise<void> {
+      await db.execute('DELETE FROM caldav_accounts WHERE id = ?', [id]);
+    },
+
+    async setLastSynced(id: string, at: string): Promise<void> {
+      await db.execute(
+        'UPDATE caldav_accounts SET last_synced_at = ?, updated_at = ? WHERE id = ?',
+        [at, at, id]
+      );
+    },
+  };
+}
+
+export function createCalendarMapRepository(db: DatabaseAdapter) {
+  return {
+    async getAll(): Promise<CalDavCalendarMap[]> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM caldav_calendar_map'
+      );
+      return rows.map(rowToCalendarMap);
+    },
+
+    async getByAccount(accountId: string): Promise<CalDavCalendarMap[]> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM caldav_calendar_map WHERE account_id = ?',
+        [accountId]
+      );
+      return rows.map(rowToCalendarMap);
+    },
+
+    async getByList(listId: string): Promise<CalDavCalendarMap | null> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM caldav_calendar_map WHERE list_id = ?',
+        [listId]
+      );
+      return rows.length > 0 ? rowToCalendarMap(rows[0]) : null;
+    },
+
+    async upsert(map: CalDavCalendarMap): Promise<void> {
+      const now = new Date().toISOString();
+      await db.execute(
+        `INSERT OR REPLACE INTO caldav_calendar_map
+         (list_id, account_id, calendar_href, sync_token, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [map.listId, map.accountId, map.calendarHref, map.syncToken ?? null, now, now]
+      );
+    },
+
+    async updateSyncToken(listId: string, syncToken: string): Promise<void> {
+      await db.execute(
+        'UPDATE caldav_calendar_map SET sync_token = ?, updated_at = ? WHERE list_id = ?',
+        [syncToken, new Date().toISOString(), listId]
+      );
+    },
+
+    async delete(listId: string): Promise<void> {
+      await db.execute('DELETE FROM caldav_calendar_map WHERE list_id = ?', [listId]);
+    },
+  };
 }

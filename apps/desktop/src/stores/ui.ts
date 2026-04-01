@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type ViewType = 'today' | 'inbox' | 'calendar' | 'planner' | 'list' | 'search';
+export type ViewType = 'today' | 'inbox' | 'calendar' | 'planner' | 'list' | 'search' | 'settings';
 export type Theme = 'light' | 'dark' | 'system';
 
 interface UIStore {

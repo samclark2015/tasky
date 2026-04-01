@@ -5,7 +5,7 @@ import {
   X, Trash2, Circle, CheckCircle2, Calendar, Flag, Tag,
   AlignLeft, Clock, List, ChevronRight, Plus,
 } from 'lucide-react';
-import { cn, formatDate, isOverdue, minutesToHHMM, hhmmToMinutes } from '@/lib/utils';
+import { cn, formatDate, isOverdue, minutesToHHMM, hhmmToMinutes, localDateFromString } from '@/lib/utils';
 import type { Task } from '@core/types';
 import { TaskModal } from '@/components/modals/task-modal';
 import { QuickAdd } from '@/components/task/quick-add';
@@ -215,9 +215,8 @@ export function DetailsPanel() {
                         const existing = task.dueDate;
                         if (existing?.includes('T')) {
                           const d = new Date(existing);
-                          const newD = new Date(date);
-                          newD.setHours(d.getHours(), d.getMinutes(), 0, 0);
-                          save({ dueDate: (d.getHours() !== 0 || d.getMinutes() !== 0) ? newD.toISOString() : date });
+                          const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
+                          save({ dueDate: hasTime ? localDateFromString(date, d.getHours(), d.getMinutes()).toISOString() : date });
                         } else {
                           save({ dueDate: date });
                         }
@@ -233,13 +232,32 @@ export function DetailsPanel() {
                       <input type="date" value="" onChange={(e) => { if (e.target.value) save({ dueDate: e.target.value }); }} className="sr-only" />
                     </label>
                   )}
-                  {task.dueDate && (
+                  {task.dueDate && (() => {
+                    const hasTime = task.dueDate.includes('T') && (() => { const d = new Date(task.dueDate!); return d.getHours() !== 0 || d.getMinutes() !== 0; })();
+                    return (
+                      <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={!hasTime}
+                          onChange={(e) => {
+                            const dateStr = task.dueDate!.includes('T') ? task.dueDate!.split('T')[0] : task.dueDate!;
+                            if (e.target.checked) {
+                              save({ dueDate: dateStr });
+                            } else {
+                              save({ dueDate: localDateFromString(dateStr, 9).toISOString() });
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        All day
+                      </label>
+                    );
+                  })()}
+                  {task.dueDate && task.dueDate.includes('T') && (() => { const d = new Date(task.dueDate!); return d.getHours() !== 0 || d.getMinutes() !== 0; })() && (
                     <input
                       type="time"
                       value={(() => {
-                        if (!task.dueDate?.includes('T')) return '';
-                        const d = new Date(task.dueDate);
-                        if (d.getHours() === 0 && d.getMinutes() === 0) return '';
+                        const d = new Date(task.dueDate!);
                         return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
                       })()}
                       onChange={(e) => {
@@ -248,9 +266,7 @@ export function DetailsPanel() {
                         if (!dateStr) return;
                         if (!time) { save({ dueDate: dateStr }); return; }
                         const [h, m] = time.split(':').map(Number);
-                        const d = new Date(dateStr);
-                        d.setHours(h, m, 0, 0);
-                        save({ dueDate: d.toISOString() });
+                        save({ dueDate: localDateFromString(dateStr, h, m).toISOString() });
                       }}
                       className="text-sm bg-transparent outline-none [color-scheme:dark] dark:[color-scheme:dark] w-28"
                     />
