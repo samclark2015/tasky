@@ -162,7 +162,14 @@ pub fn vtodo_to_ical(vtodo: &VTodo) -> String {
         }
     }
     if let Some(ca) = &vtodo.completed_at {
-        todo.add_property("COMPLETED", ca);
+        let formatted = chrono::DateTime::parse_from_rfc3339(ca)
+            .map(|dt| {
+                dt.with_timezone(&chrono::Utc)
+                    .format("%Y%m%dT%H%M%SZ")
+                    .to_string()
+            })
+            .unwrap_or_else(|_| ca.clone());
+        todo.add_property("COMPLETED", &formatted);
     }
     if let Some(rrule) = &vtodo.rrule {
         todo.add_property("RRULE", rrule);
