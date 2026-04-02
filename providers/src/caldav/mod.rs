@@ -1,13 +1,13 @@
 mod ical;
 
 use ical::{parse_vevents, parse_vtodos, vtodo_to_ical, VTodo};
-use http::Uri;
+use http::{Method, Uri};
 use hyper::body::Incoming;
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use libdav::{
     caldav::{CalDavClient, FindCalendarHomeSet, FindCalendars, GetCalendarResources, ListCalendarResources},
-    dav::{Delete, PutResource, WebDavClient},
+    dav::{Delete, WebDavClient},
 };
 use serde::Deserialize;
 use tower_http::auth::AddAuthorization;
@@ -154,20 +154,76 @@ impl SyncProvider for CalDavProvider {
                 format!("{}/{}.ics", calendar_id.trim_end_matches('/'), uid)
             });
 
-            let put_result = if let Some(etag) = &task.etag {
-                client.request(PutResource::new(&resource_href).update(ical_data, "text/calendar; charset=utf-8", etag)).await
-            } else {
-                client.request(PutResource::new(&resource_href).create(ical_data, "text/calendar; charset=utf-8")).await
+            let op = if task.etag.is_some() { "update" } else { "create" };
+
+            let uri = match client.relative_uri(&resource_href) {
+                Ok(u) => u,
+                Err(e) => {
+                    push_errors.push(format!(
+                        "Task {} (\"{}\") invalid PUT href {}: {e}",
+                        task.local_id, task.title, resource_href
+                    ));
+                    continue;
+                }
             };
 
-            match put_result {
-                Ok(resp) => pushed.push(PushResult {
-                    local_id: task.local_id.clone(),
-                    remote_id: uid,
-                    etag: resp.etag.unwrap_or_default(),
-                    href: resource_href,
-                }),
-                Err(e) => push_errors.push(format!("Task {}: {e}", task.local_id)),
+            let request = {
+                let mut builder = http::Request::builder()
+                    .method(Method::PUT)
+                    .uri(uri)
+                    .header("Content-Type", "text/calendar");
+                if let Some(etag) = &task.etag {
+                    builder = builder.header("If-Match", etag);
+                } else {
+                    builder = builder.header("If-None-Match", "*");
+                }
+                match builder.body(ical_data) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        push_errors.push(format!(
+                            "Task {} (\"{}\") failed to build PUT request: {e}",
+                            task.local_id, task.title
+                        ));
+                        continue;
+                    }
+                }
+            };
+
+            match client.request_raw(request).await {
+                Ok((parts, _body)) if parts.status.is_success() => {
+                    let new_etag = parts
+                        .headers
+                        .get("etag")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    pushed.push(PushResult {
+                        local_id: task.local_id.clone(),
+                        remote_id: uid,
+                        etag: new_etag,
+                        href: resource_href,
+                    });
+                }
+                Ok((parts, body)) => {
+                    let body_text = String::from_utf8_lossy(&body);
+                    push_errors.push(format!(
+                        "Task {} (\"{}\") {} PUT {} → {}{}",
+                        task.local_id,
+                        task.title,
+                        op,
+                        resource_href,
+                        parts.status,
+                        if body_text.trim().is_empty() {
+                            String::new()
+                        } else {
+                            format!(": {}", body_text.trim())
+                        }
+                    ));
+                }
+                Err(e) => push_errors.push(format!(
+                    "Task {} (\"{}\") {} PUT {}: {e}",
+                    task.local_id, task.title, op, resource_href
+                )),
             }
         }
 
