@@ -66,6 +66,14 @@ pub struct FetchEventsResult {
 
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CalendarInfo {
+    pub href: String,
+    pub display_name: Option<String>,
+    pub color: Option<String>,
+    pub supports_sync: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DiscoverResult {
     pub calendars: Vec<CalendarInfo>,
     pub error: Option<String>,
@@ -378,8 +386,8 @@ pub async fn caldav_fetch_events(
     username: String,
     password: String,
     calendar_href: String,
-    range_start: String,
-    range_end: String,
+    _range_start: String,
+    _range_end: String,
 ) -> Result<FetchEventsResult, String> {
     let client = match make_client(&server_url, &username, &password) {
         Ok(c) => c,

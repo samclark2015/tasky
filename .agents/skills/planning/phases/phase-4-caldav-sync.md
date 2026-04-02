@@ -79,7 +79,7 @@
 - [ ] Events stored in a dedicated Zustand `events` store slice (keyed by calendarHref + uid)
 - [ ] CalendarEvent → FullCalendar EventInput mapping with `extendedProps.type = 'event'`
 - [ ] Events are non-editable/non-draggable on the calendar
-- [ ] Per-account/per-calendar visibility toggle persisted to localStorage
+- [x] Per-account/per-calendar visibility toggle persisted to localStorage
 
 ### 4.6 Sync Engine
 - [ ] Track sync status per task (synced, pending, conflict)

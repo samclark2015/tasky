@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** Phase 4 – CalDAV Sync (completed)  
+**Phase:** Phase 4 – CalDAV Sync (completed) → moving to Phase 5  
 **Last Updated:** April 1, 2026
 
 ## Phase Completion
@@ -74,7 +74,7 @@
 - [x] VEVENT fetch command (caldav_fetch_events) for calendar view display
 - [x] CalendarEvent type + events Zustand store slice
 - [x] Calendar view: render VEVENTs read-only alongside task events
-- [ ] Per-calendar visibility toggles (deferred - low priority)
+- [x] Per-calendar visibility toggles (persisted to localStorage)
 - [x] Event detail popover with "Add to Tasks" action
 - [x] Promote VEVENT → Task (pre-fill from event, store sourceEventUid, sync as VTODO)
 - [x] source_event_uid DB column + X-TASKY-SOURCE-EVENT-UID VTODO property

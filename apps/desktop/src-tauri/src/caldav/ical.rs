@@ -1,4 +1,4 @@
-use icalendar::{Calendar, CalendarComponent, Component, Event, Todo, TodoStatus};
+use icalendar::{Calendar, CalendarComponent, Component, Event, EventLike, Todo, TodoStatus};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

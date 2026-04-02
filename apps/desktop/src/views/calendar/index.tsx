@@ -7,7 +7,7 @@ import type { EventClickArg, EventDropArg, EventInput, EventMountArg, DatesSetAr
 import { useTaskStore, useListStore, useUIStore, useEventStore, useSyncStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
 import { ViewHeader } from '@/components/layout/view-header';
-import { Plus } from 'lucide-react';
+import { Plus, Eye, EyeOff } from 'lucide-react';
 import { TaskModal } from '@/components/modals/task-modal';
 import { TaskContextMenu } from '@/components/task/task-context-menu';
 import { EventDetailPopover } from './event-detail-popover';
@@ -23,7 +23,7 @@ export function CalendarView() {
   const { tasks, updateTask } = useTaskStore();
   const { lists } = useListStore();
   const { selectTask } = useUIStore();
-  const { events: calendarEvents, fetchEvents } = useEventStore();
+  const { events: calendarEvents, fetchEvents, calendarVisibility, toggleCalendarVisibility } = useEventStore();
   const { accounts, calendarMaps } = useSyncStore();
   const { adapter } = useApp();
   const calendarRef = useRef<FullCalendar>(null);
@@ -38,6 +38,7 @@ export function CalendarView() {
   const [contextMenu, setContextMenu] = useState<{ task: Task; x: number; y: number } | null>(null);
   const [eventPopover, setEventPopover] = useState<{ event: CalendarEvent; x: number; y: number } | null>(null);
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
+  const [showCalendarToggles, setShowCalendarToggles] = useState(false);
 
   const listColorMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -46,6 +47,33 @@ export function CalendarView() {
     }
     return map;
   }, [lists]);
+
+  // Build a label map: calendarHref → display name (list name or href basename)
+  const calendarLabelMap = useMemo(() => {
+    const map = new Map<string, { label: string; color: string | null }>();
+    for (const cm of calendarMaps) {
+      const list = lists.find((l) => l.id === cm.listId);
+      map.set(cm.calendarHref, {
+        label: list?.name ?? cm.calendarHref.split('/').filter(Boolean).pop() ?? cm.calendarHref,
+        color: list?.color ?? null,
+      });
+    }
+    return map;
+  }, [calendarMaps, lists]);
+
+  // The set of calendarHrefs that actually have fetched events (used to show toggle items)
+  const activeCalendarHrefs = useMemo(() => {
+    const hrefs = new Set<string>();
+    for (const event of calendarEvents.values()) {
+      hrefs.add(event.calendarHref);
+    }
+    // Also include mapped calendars even if they have no events in range
+    for (const cm of calendarMaps) {
+      const account = accounts.find((a) => a.id === cm.accountId);
+      if (account?.syncEnabled) hrefs.add(cm.calendarHref);
+    }
+    return hrefs;
+  }, [calendarEvents, calendarMaps, accounts]);
 
   // Fetch calendar events when accounts/maps or date range changes
   useEffect(() => {
@@ -104,24 +132,26 @@ export function CalendarView() {
         };
       });
 
-    // Add calendar events
-    const eventInputs: EventInput[] = Array.from(calendarEvents.values()).map((e) => {
-      const color = e.color ?? 'hsl(217.2 91.2% 59.8%)';
-      return {
-        id: `event-${e.uid}`,
-        title: e.summary,
-        start: e.dtstart ?? undefined,
-        end: e.dtend ?? undefined,
-        backgroundColor: color,
-        borderColor: color,
-        textColor: '#fff',
-        editable: false,
-        extendedProps: { event: e, type: 'event' },
-      };
-    });
+    // Add calendar events, filtered by visibility
+    const eventInputs: EventInput[] = Array.from(calendarEvents.values())
+      .filter((e) => calendarVisibility[e.calendarHref] !== false)
+      .map((e) => {
+        const color = e.color ?? 'hsl(217.2 91.2% 59.8%)';
+        return {
+          id: `event-${e.uid}`,
+          title: e.summary,
+          start: e.dtstart ?? undefined,
+          end: e.dtend ?? undefined,
+          backgroundColor: color,
+          borderColor: color,
+          textColor: '#fff',
+          editable: false,
+          extendedProps: { event: e, type: 'event' },
+        };
+      });
 
     return [...taskEvents, ...eventInputs];
-  }, [tasks, listColorMap, calendarEvents]);
+  }, [tasks, listColorMap, calendarEvents, calendarVisibility]);
 
   const handleEventClick = useCallback(
     (info: EventClickArg) => {
@@ -221,16 +251,65 @@ export function CalendarView() {
       <div className="flex flex-col h-full">
         <ViewHeader
           actions={
-            <button
-              onClick={() => {
-                setNewTaskDefaults({});
-                setShowNewTask(true);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              Add
-            </button>
+            <div className="flex items-center gap-2">
+              {activeCalendarHrefs.size > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowCalendarToggles((v) => !v)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-sm hover:bg-accent transition-colors"
+                    title="Toggle calendar visibility"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Calendars
+                  </button>
+                  {showCalendarToggles && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowCalendarToggles(false)}
+                      />
+                      <div className="absolute right-0 top-full mt-1 z-20 min-w-[200px] rounded-md border border-border bg-popover shadow-md py-1">
+                        {Array.from(activeCalendarHrefs).map((href) => {
+                          const info = calendarLabelMap.get(href);
+                          const label = info?.label ?? href.split('/').filter(Boolean).pop() ?? href;
+                          const color = info?.color ?? 'hsl(217.2 91.2% 59.8%)';
+                          const visible = calendarVisibility[href] !== false;
+                          return (
+                            <button
+                              key={href}
+                              onClick={() => toggleCalendarVisibility(href)}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                            >
+                              <span
+                                className="flex-shrink-0 w-3 h-3 rounded-sm"
+                                style={{ backgroundColor: visible ? color : 'transparent', border: `2px solid ${color}` }}
+                              />
+                              <span className={visible ? '' : 'text-muted-foreground line-through'}>
+                                {label}
+                              </span>
+                              {visible
+                                ? <Eye className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+                                : <EyeOff className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+                              }
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  setNewTaskDefaults({});
+                  setShowNewTask(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+            </div>
           }
         >
           <h1 className="text-lg font-semibold">Calendar</h1>
