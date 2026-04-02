@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import type { TaskList } from '@core/types';
 import { useListStore, useTaskStore, useUIStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
@@ -28,7 +29,6 @@ export function ListModal({ list, onClose }: ListModalProps) {
   const [confirming, setConfirming] = useState(false);
 
   const nameRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { nameRef.current?.focus(); }, []);
 
   async function handleSave() {
     if (!name.trim() || !adapter) return;
@@ -59,23 +59,25 @@ export function ListModal({ list, onClose }: ListModalProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4"
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') onClose();
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave();
-        }}
-      >
-        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
-          <span className="font-semibold text-sm">{list ? 'Edit List' : 'New List'}</span>
-          <button onClick={onClose} className="p-1 rounded hover:bg-accent text-muted-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
+          onOpenAutoFocus={(e) => { e.preventDefault(); nameRef.current?.focus(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave(); }}
+        >
+          <Dialog.Title className="sr-only">{list ? 'Edit List' : 'New List'}</Dialog.Title>
+          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
+              <span className="font-semibold text-sm">{list ? 'Edit List' : 'New List'}</span>
+              <Dialog.Close asChild>
+                <button className="p-1 rounded hover:bg-accent text-muted-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              </Dialog.Close>
+            </div>
 
         <div className="px-5 py-4 space-y-4">
           {/* name */}
@@ -154,7 +156,9 @@ export function ListModal({ list, onClose }: ListModalProps) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

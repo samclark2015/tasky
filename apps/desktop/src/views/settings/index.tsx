@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { ViewHeader } from '@/components/layout/view-header';
 import { useApp } from '@/components/app-provider';
 import { useTaskStore, useListStore, useSyncStore } from '@/stores';
@@ -362,33 +363,31 @@ function CalDavEditModal({
   calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
   onClose: () => void;
 }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh] overflow-y-auto">
-        <div className="p-4">
-          <AddCalDavAccountForm
-            key={account.id}
-            existing={account}
-            adapter={adapter}
-            lists={lists}
-            calendarMaps={calendarMaps}
-            onDone={onClose}
-            noBorder
-          />
-        </div>
-      </div>
-    </div>
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
+        >
+          <Dialog.Title className="sr-only">Edit CalDAV Account</Dialog.Title>
+          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
+            <div className="p-4">
+              <AddCalDavAccountForm
+                key={account.id}
+                existing={account}
+                adapter={adapter}
+                lists={lists}
+                calendarMaps={calendarMaps}
+                onDone={onClose}
+                noBorder
+              />
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -626,32 +625,30 @@ function GitHubEditModal({
   repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
   onClose: () => void;
 }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh] overflow-y-auto">
-        <div className="p-4">
-          <AddGitHubAccountForm
-            key={account.id}
-            existing={account}
-            adapter={adapter}
-            repoMaps={repoMaps}
-            onDone={onClose}
-            noBorder
-          />
-        </div>
-      </div>
-    </div>
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
+        >
+          <Dialog.Title className="sr-only">Edit GitHub Account</Dialog.Title>
+          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
+            <div className="p-4">
+              <AddGitHubAccountForm
+                key={account.id}
+                existing={account}
+                adapter={adapter}
+                repoMaps={repoMaps}
+                onDone={onClose}
+                noBorder
+              />
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

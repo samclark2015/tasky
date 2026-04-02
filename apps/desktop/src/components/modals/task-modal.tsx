@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import type { Task, RecurrenceRule } from '@core/types';
 import { useTaskStore, useListStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
@@ -73,7 +74,6 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   const [saving, setSaving] = useState(false);
 
   const titleRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { titleRef.current?.focus(); }, []);
 
   async function handleSave() {
     if (!title.trim() || !adapter) return;
@@ -116,7 +116,6 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave();
   }
 
@@ -132,12 +131,17 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      onKeyDown={handleKeyDown}
-    >
-      <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
+          onKeyDown={handleKeyDown}
+          onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}
+        >
+          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+            <Dialog.Title className="sr-only">{task ? 'Edit Task' : 'New Task'}</Dialog.Title>
         {/* header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <span className="font-semibold text-sm text-muted-foreground">
@@ -312,7 +316,9 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
