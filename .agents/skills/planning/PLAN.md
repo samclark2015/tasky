@@ -58,17 +58,21 @@ A cross-platform task management app for todos, tasks, and routines with CalDAV 
 
 ```
 tasky/
-├── apps/
-│   └── desktop/          # Tauri desktop app
-│       ├── src/          # React frontend
-│       ├── src-tauri/    # Rust backend
-│       └── package.json
-├── packages/
-│   ├── core/             # Shared business logic
-│   ├── db/               # Database schema and queries
-│   └── caldav/           # CalDAV client library
-├── pnpm-workspace.yaml
-└── package.json
+├── src/              # React frontend
+│   ├── types/        # Shared domain types (inlined from @tasky/core)
+│   ├── db/           # Database layer (inlined from @tasky/db)
+│   ├── stores/       # Zustand state stores
+│   ├── components/   # React components
+│   ├── views/        # Route-level views
+│   ├── providers/    # IPC bridge to Rust
+│   └── lib/          # Utilities
+├── src-tauri/        # Rust/Tauri backend
+├── providers/        # Rust sync providers crate (CalDAV, GitHub)
+├── index.html
+├── vite.config.ts
+├── tsconfig.json
+├── package.json      # Single root package (no workspaces)
+└── Cargo.toml        # Cargo workspace: [src-tauri, providers]
 ```
 
 ## Task Data Model

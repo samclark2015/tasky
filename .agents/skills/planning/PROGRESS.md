@@ -3,7 +3,7 @@
 ## Current Status
 
 **Phase:** Phase 5 – Polish & Notifications  
-**Last Updated:** April 1, 2026
+**Last Updated:** April 2, 2026
 
 ## Phase Completion
 
@@ -148,6 +148,15 @@ None currently.
   - VEvent struct in ical.rs parses: UID, SUMMARY, DESCRIPTION, DTSTART, DTEND, LOCATION, COLOR
   - CalendarEvent type in @tasky/core includes all VEVENT fields plus calendarHref for keying
   - Per-calendar visibility toggles deferred (low priority; all enabled calendars show events by default)
+
+### Phase 6: Structure Refactor (post-Phase 5, completed Apr 2 2026)
+- Flattened monorepo: removed `apps/desktop/` nesting, frontend now lives at root
+- `src-tauri/` and `providers/` both at root level
+- pnpm workspaces eliminated — single root `package.json`
+- `@tasky/core` types inlined into `src/types/`; `@tasky/db` inlined into `src/db/`
+- Root Cargo workspace members: `["src-tauri", "providers"]`
+- All `@core/*`, `@db/*`, `@tasky/core`, `@tasky/db` imports updated to `@/types/*` / `@/db/*`
+- `cargo check` and `pnpm typecheck` both pass clean
 
 ### Provider Refactor (post-Phase 4)
 - **Architecture**: Provider logic lives in a standalone Rust crate `packages/providers` (`tasky-providers`), fully decoupled from the Tauri app crate
