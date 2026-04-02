@@ -3,7 +3,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ViewHeader } from '@/components/layout/view-header';
 import { useApp } from '@/components/app-provider';
-import { useTaskStore, useListStore, useSyncStore } from '@/stores';
+import { useTaskStore, useListStore, useSyncStore, useUIStore } from '@/stores';
+import type { SyncInterval } from '@/stores';
 import type { CalDavAccount, GitHubAccount, GitHubRepoMap, TaskList } from '@/types';
 import type { ProviderCalendar } from '@/providers/types';
 import {
@@ -40,6 +41,8 @@ export function SettingsView() {
   const { lists } = useListStore();
   const [panel, setPanel] = useState<'add-caldav' | 'add-github' | null>(null);
   const [editingAccount, setEditingAccount] = useState<EditingAccount>(null);
+
+  const { syncIntervalMinutes, setSyncInterval } = useUIStore();
 
   const hasAnyAccount = accounts.length > 0 || githubAccounts.length > 0;
 
@@ -95,6 +98,31 @@ export function SettingsView() {
             Last synced {new Date(lastSyncAt).toLocaleTimeString()}
           </div>
         )}
+
+        {/* ── Sync ─────────────────────────────────────────────────────────── */}
+        <section>
+          <h2 className="text-sm font-semibold text-foreground mb-3">Sync</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-foreground">Auto-sync interval</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Automatically sync with connected accounts</p>
+            </div>
+            <select
+              value={syncIntervalMinutes ?? 'off'}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSyncInterval(v === 'off' ? null : (Number(v) as SyncInterval));
+              }}
+              className="text-xs rounded-md border border-border bg-background px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="off">Off</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="15">Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+              <option value="60">Every hour</option>
+            </select>
+          </div>
+        </section>
 
         {/* ── Accounts ─────────────────────────────────────────────────────── */}
         <section>

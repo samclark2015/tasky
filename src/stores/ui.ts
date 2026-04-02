@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 
 export type ViewType = 'today' | 'inbox' | 'calendar' | 'planner' | 'list' | 'search' | 'settings';
 export type Theme = 'light' | 'dark' | 'system';
+export type SyncInterval = 5 | 15 | 30 | 60 | null;
 
 interface UIStore {
   sidebarOpen: boolean;
@@ -12,6 +13,7 @@ interface UIStore {
   currentListId: string | null;
   theme: Theme;
   searchQuery: string;
+  syncIntervalMinutes: SyncInterval;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   toggleDetailsPanel: () => void;
@@ -20,6 +22,7 @@ interface UIStore {
   navigateTo: (view: ViewType, listId?: string) => void;
   setTheme: (theme: Theme) => void;
   setSearchQuery: (q: string) => void;
+  setSyncInterval: (interval: SyncInterval) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -32,6 +35,7 @@ export const useUIStore = create<UIStore>()(
       currentListId: null,
       theme: 'system',
       searchQuery: '',
+      syncIntervalMinutes: null,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
@@ -46,12 +50,14 @@ export const useUIStore = create<UIStore>()(
 
       setTheme: (theme) => set({ theme }),
       setSearchQuery: (q) => set({ searchQuery: q }),
+      setSyncInterval: (interval) => set({ syncIntervalMinutes: interval }),
     }),
     {
       name: 'tasky-ui',
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         theme: state.theme,
+        syncIntervalMinutes: state.syncIntervalMinutes,
       }),
     }
   )

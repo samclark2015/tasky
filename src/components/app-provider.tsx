@@ -3,6 +3,7 @@ import type { DatabaseAdapter } from '@/db/repository';
 import { runMigrations } from '@/db/migrate';
 import { getDatabase, createAdapter } from '@/lib/database';
 import { useTaskStore, useListStore, useSyncStore } from '@/stores';
+import { useAutoSync } from '@/hooks/use-auto-sync';
 
 interface AppContextValue {
   adapter: DatabaseAdapter | null;
@@ -11,6 +12,12 @@ interface AppContextValue {
 }
 
 const AppContext = createContext<AppContextValue>({ adapter: null, ready: false, error: null });
+
+/** Mounts only after the app is ready; wires up the auto-sync hook. */
+function AutoSyncMount({ adapter }: { adapter: DatabaseAdapter }) {
+  useAutoSync(adapter);
+  return null;
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [adapter, setAdapter] = useState<DatabaseAdapter | null>(null);
@@ -67,6 +74,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{ adapter, ready, error }}>
+      {adapter && <AutoSyncMount adapter={adapter} />}
       {children}
     </AppContext.Provider>
   );

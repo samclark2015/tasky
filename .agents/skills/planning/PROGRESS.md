@@ -88,6 +88,12 @@
 - [ ] Windows build
 - [ ] Linux build
 
+### Auto-sync (completed Apr 2 2026)
+- [x] `SyncInterval` type + `syncIntervalMinutes` + `setSyncInterval` added to `useUIStore` (persisted to localStorage via `partialize`)
+- [x] `src/hooks/use-auto-sync.ts` — `useAutoSync(adapter)` hook: periodic `setInterval` (reacts to interval setting changes via store subscription) + debounced 30s sync when pending-task count increases (uses `subscribeWithSelector` on `useTaskStore`)
+- [x] `AutoSyncMount` inner component in `AppProvider` — mounts only after `ready === true`, calls `useAutoSync(adapter)`
+- [x] Settings UI "Sync" section above Accounts — `<select>` for Off / 5 / 15 / 30 / 60 min interval, styled with border/bg-background
+
 ## Blockers
 
 None currently.
@@ -124,7 +130,7 @@ None currently.
 - Credentials stored in SQLite (plaintext for MVP); encrypt pre-ship via Tauri secure storage
 - Sync runs entirely in Rust async tasks; frontend only passes task data via invoke()
 - Subtask syncing: only root tasks (parentId === null) pushed to CalDAV (RELATED-TO used for linking)
-- Periodic auto-sync: not yet implemented (Phase 5)
+- Periodic auto-sync: implemented (see Auto-sync notes below)
 - FullCalendar v6 injects CSS via JS bundle; no separate CSS imports needed
 - FullCalendar themed via CSS custom properties in `.fc-wrapper` container class
 - `DateClickArg` is exported from `@fullcalendar/interaction`, not `@fullcalendar/core`
@@ -171,8 +177,7 @@ None currently.
 - **To add a new provider** (e.g. Google Calendar, GitHub Issues): add a new Rust crate or module under `packages/providers/src/<name>/`, implement `SyncProvider`, add `#[tauri::command]` wrappers in `apps/desktop/src-tauri/src/providers/<name>/mod.rs`, register in `lib.rs` — zero TS changes required
 
 ### GitHub Provider (post-Phase 5)
-- **Rust**: `packages/providers/src/github/mod.rs` — `GitHubProvider` implementing `SyncProvider`
-- Uses `reqwest 0.12` with `rustls-tls` (added to `packages/providers/Cargo.toml`)
+- **Rust**: `packages/providers/src/github/mod.rs` — `GitHubProvider` implementing `SyncProvider`- Uses `reqwest 0.12` with `rustls-tls` (added to `packages/providers/Cargo.toml`)
 - Auth: `Authorization: Bearer {token}` header; `X-GitHub-Api-Version: 2022-11-28`
 - `test_connection` → `GET /user`; `discover_calendars` → `GET /user/repos?type=all` (paginated)
 - `sync` → POST/PATCH issues for pending tasks (push phase uses regular Issues REST API); fetches matching issues via Search API (pull phase)
@@ -191,3 +196,11 @@ None currently.
 - **DB repos**: `createGitHubAccountRepository` — no query/readOnly fields. `createGitHubRepoMapRepository` — `upsert` and `update` handle query/readOnly.
 - **Sync store**: `syncGitHubAccount` builds per-repo config: `query: map.query ?? 'assignee:@me is:open'`, `read_only: map.readOnly`. `updateGitHubRepoMap` action saves per-repo settings.
 - **Settings UI**: Account form (step 1) has only display name + token. Step 2 (repos) shows `RepoSettingsInline` under each linked repo with query input and read-only checkbox. `GitHubAccountRow` expanded view shows the same `RepoSettingsInline` per-repo, toggled with a chevron button.
+
+### Auto-sync Implementation Notes (Apr 2 2026)
+- `useUIStore` does NOT use `subscribeWithSelector` — only basic `.subscribe(listener)` available; interval change detection done by tracking a `lastInterval` local var in the subscriber
+- `useTaskStore` uses `subscribeWithSelector` — selector-based subscription `(state) => countPending(state.tasks)` works there
+- Debounce fires only on pending-count *increases* (not decreases after sync) to avoid re-triggering loops
+- `triggerSync` reads fresh state at fire time via `getState()` so stale closures are never a problem
+- `AutoSyncMount` renders `null`; used purely as a mounting point so hooks run inside `AppContext.Provider` after `ready === true`
+- Debounce delay: 30 seconds (constant `DEBOUNCE_DELAY_MS`)
