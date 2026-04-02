@@ -68,6 +68,8 @@ export interface CalDavCalendarMap {
   listId: string;
   accountId: string;
   calendarHref: string;
+  /** When true this calendar is fetched for events only — no list is created and VTODOs are not synced. */
+  eventsOnly: boolean;
   syncToken: string | null;
   createdAt: string;
   updatedAt: string;

@@ -239,6 +239,7 @@ function rowToCalendarMap(row: Record<string, unknown>): CalDavCalendarMap {
     listId: row.list_id as string,
     accountId: row.account_id as string,
     calendarHref: row.calendar_href as string,
+    eventsOnly: Boolean(row.events_only),
     syncToken: (row.sync_token as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -348,9 +349,9 @@ export function createCalendarMapRepository(db: DatabaseAdapter) {
       const now = new Date().toISOString();
       await db.execute(
         `INSERT OR REPLACE INTO caldav_calendar_map
-         (list_id, account_id, calendar_href, sync_token, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [map.listId, map.accountId, map.calendarHref, map.syncToken ?? null, now, now]
+         (list_id, account_id, calendar_href, events_only, sync_token, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [map.listId, map.accountId, map.calendarHref, map.eventsOnly ? 1 : 0, map.syncToken ?? null, now, now]
       );
     },
 

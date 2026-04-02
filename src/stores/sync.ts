@@ -54,7 +54,7 @@ interface SyncStore {
   deleteAccount: (adapter: DatabaseAdapter, id: string) => Promise<void>;
   testConnection: (serverUrl: string, username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   discoverCalendars: (serverUrl: string, username: string, password: string) => Promise<ProviderCalendar[]>;
-  linkCalendar: (adapter: DatabaseAdapter, accountId: string, calendarHref: string, list: TaskList) => Promise<void>;
+  linkCalendar: (adapter: DatabaseAdapter, accountId: string, calendarHref: string, list: TaskList | null, eventsOnly?: boolean) => Promise<void>;
   unlinkCalendar: (adapter: DatabaseAdapter, listId: string) => Promise<void>;
   syncAccount: (
     adapter: DatabaseAdapter,
@@ -171,13 +171,17 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     return providerDiscoverCalendars('caldav', { server_url: serverUrl, username, password });
   },
 
-  async linkCalendar(adapter, accountId, calendarHref, list) {
+  async linkCalendar(adapter, accountId, calendarHref, list, eventsOnly = false) {
     const mapRepo = createCalendarMapRepository(adapter);
     const now = new Date().toISOString();
+    // For events-only calendars there is no list — generate a stable ID used
+    // only as the map row's primary key.
+    const listId = list?.id ?? generateId();
     const map: CalDavCalendarMap = {
-      listId: list.id,
+      listId,
       accountId,
       calendarHref,
+      eventsOnly,
       syncToken: null,
       createdAt: now,
       updatedAt: now,
@@ -185,7 +189,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     await mapRepo.upsert(map);
     set((state) => ({
       calendarMaps: [
-        ...state.calendarMaps.filter((m) => m.listId !== list.id),
+        ...state.calendarMaps.filter((m) => m.calendarHref !== calendarHref || m.accountId !== accountId),
         map,
       ],
     }));
@@ -220,6 +224,8 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     };
 
     for (const map of maps) {
+      if (map.eventsOnly) continue; // Events-only calendars show in calendar view; no VTODO sync.
+
       const calendarTasks = tasks.filter((t) => t.listId === map.listId);
       const pendingTasks = calendarTasks.filter(
         (t) => t.syncStatus === 'pending' && t.parentId === null

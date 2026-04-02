@@ -18,6 +18,7 @@ import {
   Link,
   Unlink,
   Github,
+  Calendar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -539,13 +540,16 @@ function AddCalDavAccountForm({
     }
   }
 
-  async function handleLinkToggle(cal: ProviderCalendar) {
+  async function handleLinkToggle(cal: ProviderCalendar, eventsOnly = false) {
     if (!savedAccountId) return;
     const existing = calendarMaps.find(
       (m) => m.accountId === savedAccountId && m.calendarHref === cal.id
     );
     if (existing) {
       await unlinkCalendar(adapter, existing.listId);
+    } else if (eventsOnly) {
+      // Events-only: fetch VEVENTs into the calendar view, no list created.
+      await linkCalendar(adapter, savedAccountId, cal.id, null, true);
     } else {
       let list = lists.find((l) => l.caldavUrl === cal.id);
       if (!list) {
@@ -554,7 +558,7 @@ function AddCalDavAccountForm({
         await useListStore.getState().updateList(adapter, list.id, { caldavUrl: cal.id });
         list = { ...list, caldavUrl: cal.id };
       }
-      await linkCalendar(adapter, savedAccountId, cal.id, list);
+      await linkCalendar(adapter, savedAccountId, cal.id, list, false);
     }
   }
 
@@ -653,9 +657,10 @@ function AddCalDavAccountForm({
               </div>
             )}
             {!discovering && discovered.map((cal) => {
-              const isLinked = savedAccountId
-                ? calendarMaps.some((m) => m.accountId === savedAccountId && m.calendarHref === cal.id)
-                : false;
+              const linkedMap = savedAccountId
+                ? calendarMaps.find((m) => m.accountId === savedAccountId && m.calendarHref === cal.id)
+                : undefined;
+              const isLinked = Boolean(linkedMap);
               const calName = cal.displayName ?? cal.id.split('/').filter(Boolean).pop() ?? 'Calendar';
 
               return (
@@ -664,17 +669,39 @@ function AddCalDavAccountForm({
                     <p className="text-sm truncate">{calName}</p>
                     <p className="text-xs text-muted-foreground truncate">{cal.id}</p>
                   </div>
-                  <button
-                    onClick={() => handleLinkToggle(cal)}
-                    className={cn(
-                      'flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors',
-                      isLinked
-                        ? 'bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive'
-                        : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
-                    )}
-                  >
-                    {isLinked ? <><Unlink className="h-3 w-3" /> Unlink</> : <><Link className="h-3 w-3" /> Link</>}
-                  </button>
+                  {isLinked ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {linkedMap?.eventsOnly
+                          ? <><Calendar className="h-3 w-3" /> Events only</>
+                          : <><Link className="h-3 w-3" /> Tasks</>
+                        }
+                      </span>
+                      <button
+                        onClick={() => handleLinkToggle(cal)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Unlink className="h-3 w-3" /> Unlink
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleLinkToggle(cal, false)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        title="Sync as a task list"
+                      >
+                        <Link className="h-3 w-3" /> Tasks
+                      </button>
+                      <button
+                        onClick={() => handleLinkToggle(cal, true)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        title="Show events in calendar view only — no task list created"
+                      >
+                        <Calendar className="h-3 w-3" /> Events only
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}

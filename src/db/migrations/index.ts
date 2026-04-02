@@ -130,4 +130,32 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       ALTER TABLE github_accounts DROP COLUMN read_only;
     `,
   },
+  {
+    version: 9,
+    sql: `
+      -- Recreate caldav_calendar_map without the FK on list_id so that
+      -- events-only calendar entries (which have no corresponding list) are
+      -- supported. list_id remains the PK but is no longer FK-constrained.
+      CREATE TABLE caldav_calendar_map_v2 (
+        list_id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES caldav_accounts(id) ON DELETE CASCADE,
+        calendar_href TEXT NOT NULL,
+        events_only INTEGER NOT NULL DEFAULT 0,
+        sync_token TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      INSERT INTO caldav_calendar_map_v2
+        SELECT list_id, account_id, calendar_href, 0, sync_token, created_at, updated_at
+        FROM caldav_calendar_map;
+
+      DROP TABLE caldav_calendar_map;
+      ALTER TABLE caldav_calendar_map_v2 RENAME TO caldav_calendar_map;
+
+      CREATE INDEX IF NOT EXISTS idx_caldav_calendar_map_account_id
+        ON caldav_calendar_map(account_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_caldav_uid2 ON tasks(caldav_uid);
+    `,
+  },
 ];
