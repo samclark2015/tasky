@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type {
   CalDavAccount,
   CalDavCalendarMap,
+  GitHubAccount,
+  GitHubRepoMap,
   SyncResult,
   Task,
   TaskList,
@@ -10,6 +12,8 @@ import type { DatabaseAdapter } from '@db/repository';
 import {
   createAccountRepository,
   createCalendarMapRepository,
+  createGitHubAccountRepository,
+  createGitHubRepoMapRepository,
   createTaskRepository,
 } from '@db/repository';
 import { generateId } from '@/lib/utils';
@@ -26,13 +30,21 @@ export type SyncStatus = 'idle' | 'syncing' | 'error' | 'success';
 export type { ProviderCalendar as DiscoveredCalendar };
 
 interface SyncStore {
+  // ── CalDAV state ────────────────────────────────────────────────────────────
   accounts: CalDavAccount[];
   calendarMaps: CalDavCalendarMap[];
+
+  // ── GitHub state ────────────────────────────────────────────────────────────
+  githubAccounts: GitHubAccount[];
+  githubRepoMaps: GitHubRepoMap[];
+
+  // ── Shared sync status ──────────────────────────────────────────────────────
   syncStatus: SyncStatus;
   lastSyncError: string | null;
   lastSyncAt: string | null;
   isSyncing: boolean;
 
+  // ── CalDAV actions ──────────────────────────────────────────────────────────
   loadAccounts: (adapter: DatabaseAdapter) => Promise<void>;
   addAccount: (
     adapter: DatabaseAdapter,
@@ -52,6 +64,26 @@ interface SyncStore {
     onTasksChanged: () => Promise<void>,
     onListsChanged: () => Promise<void>,
   ) => Promise<SyncResult>;
+
+  // ── GitHub actions ──────────────────────────────────────────────────────────
+  addGitHubAccount: (
+    adapter: DatabaseAdapter,
+    account: Omit<GitHubAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>
+  ) => Promise<GitHubAccount>;
+  updateGitHubAccount: (adapter: DatabaseAdapter, id: string, updates: Partial<GitHubAccount>) => Promise<void>;
+  deleteGitHubAccount: (adapter: DatabaseAdapter, id: string) => Promise<void>;
+  testGitHubConnection: (token: string) => Promise<{ ok: boolean; error?: string }>;
+  discoverGitHubRepos: (token: string) => Promise<ProviderCalendar[]>;
+  linkGitHubRepo: (adapter: DatabaseAdapter, accountId: string, repoFullName: string, list: TaskList) => Promise<void>;
+  unlinkGitHubRepo: (adapter: DatabaseAdapter, listId: string) => Promise<void>;
+  syncGitHubAccount: (
+    adapter: DatabaseAdapter,
+    accountId: string,
+    tasks: Task[],
+    onTasksChanged: () => Promise<void>,
+  ) => Promise<SyncResult>;
+
+  // ── Shared actions ──────────────────────────────────────────────────────────
   syncAll: (
     adapter: DatabaseAdapter,
     tasks: Task[],
@@ -64,19 +96,27 @@ interface SyncStore {
 export const useSyncStore = create<SyncStore>()((set, get) => ({
   accounts: [],
   calendarMaps: [],
+  githubAccounts: [],
+  githubRepoMaps: [],
   syncStatus: 'idle',
   lastSyncError: null,
   lastSyncAt: null,
   isSyncing: false,
 
+  // ── CalDAV ──────────────────────────────────────────────────────────────────
+
   async loadAccounts(adapter) {
     const accountRepo = createAccountRepository(adapter);
     const mapRepo = createCalendarMapRepository(adapter);
-    const [accounts, calendarMaps] = await Promise.all([
+    const githubAccountRepo = createGitHubAccountRepository(adapter);
+    const githubRepoMapRepo = createGitHubRepoMapRepository(adapter);
+    const [accounts, calendarMaps, githubAccounts, githubRepoMaps] = await Promise.all([
       accountRepo.getAll(),
       mapRepo.getAll(),
+      githubAccountRepo.getAll(),
+      githubRepoMapRepo.getAll(),
     ]);
-    set({ accounts, calendarMaps });
+    set({ accounts, calendarMaps, githubAccounts, githubRepoMaps });
   },
 
   async addAccount(adapter, accountData) {
@@ -280,8 +320,214 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     return result;
   },
 
+  // ── GitHub ──────────────────────────────────────────────────────────────────
+
+  async addGitHubAccount(adapter, accountData) {
+    const repo = createGitHubAccountRepository(adapter);
+    const now = new Date().toISOString();
+    const account: GitHubAccount = {
+      ...accountData,
+      id: generateId(),
+      lastSyncedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await repo.create(account);
+    set((state) => ({ githubAccounts: [...state.githubAccounts, account] }));
+    return account;
+  },
+
+  async updateGitHubAccount(adapter, id, updates) {
+    const repo = createGitHubAccountRepository(adapter);
+    await repo.update(id, updates);
+    set((state) => ({
+      githubAccounts: state.githubAccounts.map((a) =>
+        a.id === id ? { ...a, ...updates, updatedAt: new Date().toISOString() } : a
+      ),
+    }));
+  },
+
+  async deleteGitHubAccount(adapter, id) {
+    const repoMapRepo = createGitHubRepoMapRepository(adapter);
+    const accountRepo = createGitHubAccountRepository(adapter);
+    const maps = await repoMapRepo.getByAccount(id);
+    for (const map of maps) {
+      await repoMapRepo.delete(map.listId);
+    }
+    await accountRepo.delete(id);
+    set((state) => ({
+      githubAccounts: state.githubAccounts.filter((a) => a.id !== id),
+      githubRepoMaps: state.githubRepoMaps.filter((m) => m.accountId !== id),
+    }));
+  },
+
+  async testGitHubConnection(token) {
+    return providerTestConnection('github', { token });
+  },
+
+  async discoverGitHubRepos(token) {
+    return providerDiscoverCalendars('github', { token });
+  },
+
+  async linkGitHubRepo(adapter, accountId, repoFullName, list) {
+    const repoMapRepo = createGitHubRepoMapRepository(adapter);
+    const now = new Date().toISOString();
+    const map: GitHubRepoMap = {
+      listId: list.id,
+      accountId,
+      repoFullName,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await repoMapRepo.upsert(map);
+    set((state) => ({
+      githubRepoMaps: [
+        ...state.githubRepoMaps.filter((m) => m.listId !== list.id),
+        map,
+      ],
+    }));
+  },
+
+  async unlinkGitHubRepo(adapter, listId) {
+    const repoMapRepo = createGitHubRepoMapRepository(adapter);
+    await repoMapRepo.delete(listId);
+    set((state) => ({
+      githubRepoMaps: state.githubRepoMaps.filter((m) => m.listId !== listId),
+    }));
+  },
+
+  async syncGitHubAccount(adapter, accountId, tasks, onTasksChanged) {
+    const account = get().githubAccounts.find((a) => a.id === accountId);
+    if (!account || !account.syncEnabled) {
+      return { accountId, created: 0, updated: 0, deleted: 0, conflicts: 0, errors: [] };
+    }
+
+    const maps = get().githubRepoMaps.filter((m) => m.accountId === accountId);
+    const taskRepo = createTaskRepository(adapter);
+    const accountRepo = createGitHubAccountRepository(adapter);
+    const config = { token: account.token, query: account.query, read_only: account.readOnly };
+
+    const result: SyncResult = {
+      accountId,
+      created: 0,
+      updated: 0,
+      deleted: 0,
+      conflicts: 0,
+      errors: [],
+    };
+
+    for (const map of maps) {
+      const repoTasks = tasks.filter((t) => t.listId === map.listId);
+      const pendingTasks = repoTasks.filter(
+        // Only root tasks (no parent) are synced as top-level GitHub issues
+        (t) => t.syncStatus === 'pending' && t.parentId === null
+      );
+
+      const pushInputs: TaskPushInput[] = pendingTasks.map((t) => ({
+        localId: t.id,
+        remoteId: t.caldavUid ?? null, // reuse caldavUid to store the GitHub issue number
+        title: t.title,
+        description: t.description,
+        dueDate: t.dueDate,
+        priority: t.priority,
+        tags: t.tags,
+        rrule: null, // GitHub issues have no recurrence
+        completed: t.completed,
+        completedAt: t.completedAt,
+        notes: t.notes,
+        timeEstimate: t.timeEstimate,
+        etag: t.etag,
+        href: null,
+        parentRemoteId: null,
+        sourceEventUid: null,
+      }));
+
+      try {
+        const syncResult = await providerSync(
+          'github',
+          config,
+          map.repoFullName,
+          pushInputs,
+          [],
+        );
+
+        const justPushedIds = new Set<string>();
+
+        for (const pushed of syncResult.pushed) {
+          await taskRepo.update(pushed.localId, {
+            caldavUid: pushed.remoteId, // GitHub issue number as string
+            etag: pushed.etag,          // GitHub updated_at timestamp
+            syncStatus: 'synced',
+          });
+          justPushedIds.add(pushed.remoteId);
+          result.updated++;
+        }
+
+        result.errors.push(...syncResult.pushErrors, ...syncResult.deleteErrors);
+
+        for (const remote of syncResult.remoteTasks) {
+          const existingTask = repoTasks.find((t) => t.caldavUid === remote.remoteId);
+
+          if (existingTask) {
+            if (existingTask.syncStatus === 'pending') { result.conflicts++; continue; }
+            if (justPushedIds.has(remote.remoteId)) continue;
+            if (existingTask.etag && existingTask.etag === remote.etag) continue;
+
+            const updates: Partial<Task> = {
+              title: remote.title,
+              description: remote.description ?? '',
+              tags: remote.tags,
+              completed: remote.completed,
+              completedAt: remote.completedAt ?? null,
+              etag: remote.etag,
+              syncStatus: 'synced',
+            };
+            await taskRepo.update(existingTask.id, updates);
+            result.updated++;
+          } else {
+            const now = new Date().toISOString();
+            const newTask: Task = {
+              id: generateId(),
+              listId: map.listId,
+              parentId: null,
+              title: remote.title,
+              description: remote.description ?? '',
+              dueDate: null, // GitHub issues have no due date
+              priority: 'medium',
+              tags: remote.tags,
+              recurrence: null,
+              completed: remote.completed,
+              completedAt: remote.completedAt ?? null,
+              createdAt: now,
+              updatedAt: now,
+              timeEstimate: null,
+              timeSpent: 0,
+              notes: '',
+              etag: remote.etag,
+              caldavUid: remote.remoteId,
+              syncStatus: 'synced',
+              sourceEventUid: null,
+            };
+            await taskRepo.create(newTask);
+            result.created++;
+          }
+        }
+
+        if (syncResult.fetchError) result.errors.push(syncResult.fetchError);
+      } catch (e) {
+        result.errors.push(`Repo ${map.repoFullName}: ${String(e)}`);
+      }
+    }
+
+    await accountRepo.setLastSynced(accountId, new Date().toISOString());
+    await onTasksChanged();
+    return result;
+  },
+
+  // ── syncAll (CalDAV + GitHub) ────────────────────────────────────────────────
+
   async syncAll(adapter, tasks, lists, onTasksChanged, onListsChanged) {
-    const { accounts, isSyncing } = get();
+    const { accounts, githubAccounts, isSyncing } = get();
     if (isSyncing) return;
 
     set({ isSyncing: true, syncStatus: 'syncing', lastSyncError: null });
@@ -292,7 +538,16 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
         const result = await get().syncAccount(adapter, account.id, tasks, lists, onTasksChanged, onListsChanged);
         errors.push(...result.errors);
       } catch (e) {
-        errors.push(`Account ${account.displayName}: ${String(e)}`);
+        errors.push(`CalDAV ${account.displayName}: ${String(e)}`);
+      }
+    }
+
+    for (const account of githubAccounts.filter((a) => a.syncEnabled)) {
+      try {
+        const result = await get().syncGitHubAccount(adapter, account.id, tasks, onTasksChanged);
+        errors.push(...result.errors);
+      } catch (e) {
+        errors.push(`GitHub ${account.displayName}: ${String(e)}`);
       }
     }
 
@@ -307,6 +562,8 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     await get().loadAccounts(adapter);
   },
 }));
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function priorityNumToStr(p: number | null): Task['priority'] {
   if (!p) return 'medium';

@@ -27,7 +27,7 @@ tokio = { version = "1", features = ["full"] }
 libdav = "0.10"
 icalendar = { version = "0.17", features = ["parser"] }
 hyper = { version = "1", features = ["full"] }
-hyper-rustls = { version = "0.27", features = ["native-tokio", "http1", "http2"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["ring", "native-tokio", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["client", "client-legacy", "tokio"] }
 tower-service = "0.3"
 tower-http = { version = "0.6", features = ["auth"] }

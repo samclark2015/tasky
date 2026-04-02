@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ViewHeader } from '@/components/layout/view-header';
 import { useApp } from '@/components/app-provider';
 import { useTaskStore, useListStore, useSyncStore } from '@/stores';
-import type { CalDavAccount, TaskList } from '@tasky/core';
+import type { CalDavAccount, GitHubAccount, TaskList } from '@tasky/core';
 import type { ProviderCalendar } from '@/providers/types';
 import {
   Wifi,
@@ -16,18 +16,27 @@ import {
   X,
   Link,
   Unlink,
+  Github,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type PanelState = 'list' | 'add' | 'discover';
+type PanelState = 'list' | 'add-caldav' | 'add-github';
 
 export function SettingsView() {
   const { adapter } = useApp();
-  const { accounts, calendarMaps, syncStatus, lastSyncAt, lastSyncError, isSyncing, syncAll, deleteAccount } = useSyncStore();
+  const {
+    accounts, calendarMaps,
+    githubAccounts, githubRepoMaps,
+    syncStatus, lastSyncAt, lastSyncError, isSyncing,
+    syncAll, deleteAccount, deleteGitHubAccount,
+  } = useSyncStore();
   const { tasks } = useTaskStore();
   const { lists } = useListStore();
   const [panel, setPanel] = useState<PanelState>('list');
-  const [editingAccount, setEditingAccount] = useState<CalDavAccount | null>(null);
+  const [editingCalDav, setEditingCalDav] = useState<CalDavAccount | null>(null);
+  const [editingGitHub, setEditingGitHub] = useState<GitHubAccount | null>(null);
+
+  const hasAnyAccount = accounts.length > 0 || githubAccounts.length > 0;
 
   function handleSync() {
     if (!adapter) return;
@@ -44,7 +53,7 @@ export function SettingsView() {
     <div className="flex flex-col h-full overflow-hidden">
       <ViewHeader
         actions={
-          accounts.length > 0 ? (
+          hasAnyAccount ? (
             <button
               onClick={handleSync}
               disabled={isSyncing}
@@ -82,12 +91,12 @@ export function SettingsView() {
           </div>
         )}
 
-        {/* CalDAV Accounts section */}
+        {/* ── CalDAV Accounts ─────────────────────────────────────────────── */}
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground">CalDAV Accounts</h2>
             <button
-              onClick={() => { setEditingAccount(null); setPanel('add'); }}
+              onClick={() => { setEditingCalDav(null); setPanel('add-caldav'); }}
               className="flex items-center gap-1 text-xs text-primary hover:underline"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -95,7 +104,7 @@ export function SettingsView() {
             </button>
           </div>
 
-          {accounts.length === 0 && panel !== 'add' && (
+          {accounts.length === 0 && panel !== 'add-caldav' && (
             <div className="text-center py-8 text-sm text-muted-foreground">
               <Wifi className="h-8 w-8 mx-auto mb-2 opacity-30" />
               <p>No CalDAV accounts connected.</p>
@@ -104,36 +113,99 @@ export function SettingsView() {
           )}
 
           {accounts.map((account) => (
-            <AccountRow
+            <CalDavAccountRow
               key={account.id}
               account={account}
               calendarMaps={calendarMaps}
               lists={lists}
-              onEdit={() => { setEditingAccount(account); setPanel('add'); }}
+              onEdit={() => setEditingCalDav(account)}
               onDelete={() => adapter && deleteAccount(adapter, account.id)}
             />
           ))}
         </section>
 
-        {/* Add / Edit form */}
-        {panel === 'add' && adapter && (
-          <AddAccountForm
-            key={editingAccount?.id ?? 'new'}
-            existing={editingAccount}
+        {/* Add CalDAV form (inline, new accounts only) */}
+        {panel === 'add-caldav' && !editingCalDav && adapter && (
+          <AddCalDavAccountForm
+            key="new-caldav"
+            existing={null}
             adapter={adapter}
             lists={lists}
             calendarMaps={calendarMaps}
-            onDone={() => { setPanel('list'); setEditingAccount(null); }}
+            onDone={() => { setPanel('list'); }}
+          />
+        )}
+
+        {/* ── GitHub Accounts ──────────────────────────────────────────────── */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-foreground">GitHub Accounts</h2>
+            <button
+              onClick={() => { setEditingGitHub(null); setPanel('add-github'); }}
+              className="flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Account
+            </button>
+          </div>
+
+          {githubAccounts.length === 0 && panel !== 'add-github' && (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              <Github className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p>No GitHub accounts connected.</p>
+              <p className="text-xs mt-1">Sync GitHub Issues as tasks using a Personal Access Token.</p>
+            </div>
+          )}
+
+          {githubAccounts.map((account) => (
+            <GitHubAccountRow
+              key={account.id}
+              account={account}
+              repoMaps={githubRepoMaps}
+              lists={lists}
+              onEdit={() => setEditingGitHub(account)}
+              onDelete={() => adapter && deleteGitHubAccount(adapter, account.id)}
+            />
+          ))}
+        </section>
+
+        {/* Add GitHub form (inline, new accounts only) */}
+        {panel === 'add-github' && !editingGitHub && adapter && (
+          <AddGitHubAccountForm
+            key="new-github"
+            existing={null}
+            adapter={adapter}
+            repoMaps={githubRepoMaps}
+            onDone={() => { setPanel('list'); }}
           />
         )}
       </div>
+
+      {/* Edit GitHub account modal */}
+      {editingCalDav && adapter && (
+        <CalDavEditModal
+          account={editingCalDav}
+          adapter={adapter}
+          lists={lists}
+          calendarMaps={calendarMaps}
+          onClose={() => setEditingCalDav(null)}
+        />
+      )}
+      {editingGitHub && adapter && (
+        <GitHubEditModal
+          account={editingGitHub}
+          adapter={adapter}
+          repoMaps={githubRepoMaps}
+          onClose={() => setEditingGitHub(null)}
+        />
+      )}
     </div>
   );
 }
 
-// ── AccountRow ──────────────────────────────────────────────────────────────
+// ── CalDavAccountRow ──────────────────────────────────────────────────────────
 
-function AccountRow({
+function CalDavAccountRow({
   account,
   calendarMaps,
   lists,
@@ -201,27 +273,148 @@ function AccountRow({
   );
 }
 
-// ── AddAccountForm ───────────────────────────────────────────────────────────
+// ── GitHubAccountRow ──────────────────────────────────────────────────────────
 
-type FormStep = 'credentials' | 'testing' | 'calendars';
+function GitHubAccountRow({
+  account,
+  repoMaps,
+  lists,
+  onEdit,
+  onDelete,
+}: {
+  account: GitHubAccount;
+  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
+  lists: TaskList[];
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const myMaps = repoMaps.filter((m) => m.accountId === account.id);
 
-function AddAccountForm({
+  return (
+    <div className="border border-border rounded-md mb-2 overflow-hidden">
+      <button
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <Github className="h-4 w-4 text-primary flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{account.displayName}</p>
+          <p className="text-xs text-muted-foreground">
+            {account.lastSyncedAt
+              ? `Last synced ${new Date(account.lastSyncedAt).toLocaleTimeString()}`
+              : 'Never synced'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{myMaps.length} repo{myMaps.length !== 1 ? 's' : ''}</span>
+          {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border bg-muted/20 px-3 py-2 space-y-1.5">
+          {myMaps.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-1">No repositories linked.</p>
+          ) : (
+            myMaps.map((m) => {
+              const list = lists.find((l) => l.id === m.listId);
+              return (
+                <div key={m.listId} className="flex items-center gap-2 text-xs">
+                  {list && (
+                    <span
+                      className="h-2 w-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: list.color ?? '#6366f1' }}
+                    />
+                  )}
+                  <span className="flex-1 truncate text-muted-foreground">
+                    {list?.name ?? m.listId}
+                  </span>
+                  <span className="text-muted-foreground/60 truncate max-w-[180px]">{m.repoFullName}</span>
+                </div>
+              );
+            })
+          )}
+          <div className="flex gap-2 pt-1">
+            <button onClick={onEdit} className="text-xs text-primary hover:underline">Edit</button>
+            <button onClick={onDelete} className="text-xs text-destructive hover:underline flex items-center gap-1">
+              <Trash2 className="h-3 w-3" /> Remove
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CalDavEditModal ───────────────────────────────────────────────────────────
+
+function CalDavEditModal({
+  account,
+  adapter,
+  lists,
+  calendarMaps,
+  onClose,
+}: {
+  account: CalDavAccount;
+  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
+  lists: TaskList[];
+  calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh] overflow-y-auto">
+        <div className="p-4">
+          <AddCalDavAccountForm
+            key={account.id}
+            existing={account}
+            adapter={adapter}
+            lists={lists}
+            calendarMaps={calendarMaps}
+            onDone={onClose}
+            noBorder
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AddCalDavAccountForm ─────────────────────────────────────────────────────
+
+type CalDavFormStep = 'credentials' | 'testing' | 'calendars';
+
+function AddCalDavAccountForm({
   existing,
   adapter,
   lists,
   calendarMaps,
   onDone,
+  noBorder,
 }: {
   existing: CalDavAccount | null;
   adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
   lists: TaskList[];
   calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
   onDone: () => void;
+  noBorder?: boolean;
 }) {
   const { addAccount, updateAccount, testConnection, discoverCalendars, linkCalendar, unlinkCalendar } = useSyncStore();
   const { createList } = useListStore();
 
-  const [step, setStep] = useState<FormStep>('credentials');
+  const [step, setStep] = useState<CalDavFormStep>('credentials');
   const [displayName, setDisplayName] = useState(existing?.displayName ?? '');
   const [serverUrl, setServerUrl] = useState(existing?.serverUrl ?? '');
   const [username, setUsername] = useState(existing?.username ?? '');
@@ -282,9 +475,9 @@ function AddAccountForm({
   }
 
   return (
-    <section className="border border-border rounded-md p-4 space-y-4">
+    <section className={cn('p-4 space-y-4', !noBorder && 'border border-border rounded-md')}>
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{existing ? 'Edit Account' : 'New CalDAV Account'}</h3>
+        <h3 className="text-sm font-semibold">{existing ? 'Edit CalDAV Account' : 'New CalDAV Account'}</h3>
         <button onClick={onDone} className="text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" />
         </button>
@@ -412,6 +605,289 @@ function AddAccountForm({
             </button>
             <button onClick={() => setStep('credentials')} className="text-xs text-muted-foreground hover:text-foreground px-2">
               Edit credentials
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── GitHubEditModal ───────────────────────────────────────────────────────────
+
+function GitHubEditModal({
+  account,
+  adapter,
+  repoMaps,
+  onClose,
+}: {
+  account: GitHubAccount;
+  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
+  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh] overflow-y-auto">
+        <div className="p-4">
+          <AddGitHubAccountForm
+            key={account.id}
+            existing={account}
+            adapter={adapter}
+            repoMaps={repoMaps}
+            onDone={onClose}
+            noBorder
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AddGitHubAccountForm ──────────────────────────────────────────────────────
+
+type GitHubFormStep = 'credentials' | 'repos';
+
+function AddGitHubAccountForm({
+  existing,
+  adapter,
+  repoMaps,
+  onDone,
+  noBorder,
+}: {
+  existing: GitHubAccount | null;
+  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
+  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
+  onDone: () => void;
+  noBorder?: boolean;
+}) {
+  const {
+    addGitHubAccount,
+    updateGitHubAccount,
+    testGitHubConnection,
+    discoverGitHubRepos,
+    linkGitHubRepo,
+    unlinkGitHubRepo,
+  } = useSyncStore();
+  const { createList } = useListStore();
+
+  const [step, setStep] = useState<GitHubFormStep>('credentials');
+  const [displayName, setDisplayName] = useState(existing?.displayName ?? '');
+  const [token, setToken] = useState(existing?.token ?? '');
+  const [query, setQuery] = useState(existing?.query ?? 'assignee:@me is:open');
+  const [readOnly, setReadOnly] = useState(existing?.readOnly ?? false);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState<ProviderCalendar[]>([]);
+  const [savedAccountId, setSavedAccountId] = useState<string | null>(existing?.id ?? null);
+
+  async function handleConnect() {
+    setTesting(true);
+    setTestError(null);
+    const result = await testGitHubConnection(token);
+    setTesting(false);
+    if (result.ok) {
+      let accountId = savedAccountId;
+      if (!accountId) {
+        const account = await addGitHubAccount(adapter, {
+          displayName: displayName || 'GitHub',
+          token,
+          query: query || 'assignee:@me is:open',
+          readOnly,
+          syncEnabled: true,
+        });
+        accountId = account.id;
+        setSavedAccountId(accountId);
+      } else {
+        await updateGitHubAccount(adapter, accountId, {
+          displayName: displayName || 'GitHub',
+          token,
+          query: query || 'assignee:@me is:open',
+          readOnly,
+        });
+      }
+      setStep('repos');
+      setDiscovering(true);
+      const repos = await discoverGitHubRepos(token);
+      setDiscovered(repos);
+      setDiscovering(false);
+    } else {
+      setTestError(result.error ?? 'Authentication failed. Check your token.');
+    }
+  }
+
+  async function handleRepoToggle(repo: ProviderCalendar) {
+    if (!savedAccountId) return;
+    const existingMap = repoMaps.find(
+      (m) => m.accountId === savedAccountId && m.repoFullName === repo.id
+    );
+    if (existingMap) {
+      await unlinkGitHubRepo(adapter, existingMap.listId);
+    } else {
+      const repoName = repo.displayName ?? repo.id.split('/').pop() ?? repo.id;
+      const list = await createList(adapter, repoName, undefined);
+      await linkGitHubRepo(adapter, savedAccountId, repo.id, list);
+    }
+  }
+
+  return (
+    <section className={cn('p-4 space-y-4', !noBorder && 'border border-border rounded-md')}>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <Github className="h-4 w-4" />
+          {existing ? 'Edit GitHub Account' : 'New GitHub Account'}
+        </h3>
+        <button onClick={onDone} className="text-muted-foreground hover:text-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {step === 'credentials' ? (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">Display Name</label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="My GitHub Account"
+              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">
+              Personal Access Token
+            </label>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="ghp_…"
+              autoComplete="off"
+              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring font-mono"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Requires <code className="bg-muted px-1 rounded">repo</code> scope to read and write issues.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1">
+              Issue Search Query
+            </label>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="assignee:@me is:open"
+              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring font-mono"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              GitHub search syntax. <code className="bg-muted px-1 rounded">repo:</code> and <code className="bg-muted px-1 rounded">is:issue</code> are added automatically.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="github-read-only"
+              type="checkbox"
+              checked={readOnly}
+              onChange={(e) => setReadOnly(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-input accent-primary"
+            />
+            <label htmlFor="github-read-only" className="text-xs text-muted-foreground cursor-pointer select-none">
+              Read-only — pull issues in only, never push changes back to GitHub
+            </label>
+          </div>
+
+          {testError && (
+            <p className="text-xs text-destructive flex items-center gap-1">
+              <WifiOff className="h-3.5 w-3.5" /> {testError}
+            </p>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={handleConnect}
+              disabled={testing || !token}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {testing ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Github className="h-3.5 w-3.5" />
+              )}
+              {testing ? 'Connecting…' : 'Connect'}
+            </button>
+            <button onClick={onDone} className="text-xs text-muted-foreground hover:text-foreground px-2">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+            <Check className="h-3.5 w-3.5" /> Connected successfully
+          </p>
+
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-2">
+              {discovering
+                ? 'Loading repositories…'
+                : `${discovered.length} repositor${discovered.length !== 1 ? 'ies' : 'y'} found`}
+            </p>
+            {discovering && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                Fetching repositories…
+              </div>
+            )}
+            {!discovering && discovered.map((repo) => {
+              const isLinked = savedAccountId
+                ? repoMaps.some((m) => m.accountId === savedAccountId && m.repoFullName === repo.id)
+                : false;
+
+              return (
+                <div key={repo.id} className="flex items-center gap-2 py-1.5 border-b border-border last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{repo.displayName ?? repo.id}</p>
+                    <p className="text-xs text-muted-foreground truncate">{repo.id}</p>
+                  </div>
+                  <button
+                    onClick={() => handleRepoToggle(repo)}
+                    className={cn(
+                      'flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors',
+                      isLinked
+                        ? 'bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive'
+                        : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                    )}
+                  >
+                    {isLinked ? <><Unlink className="h-3 w-3" /> Unlink</> : <><Link className="h-3 w-3" /> Link</>}
+                  </button>
+                </div>
+              );
+            })}
+            {!discovering && discovered.length === 0 && (
+              <p className="text-xs text-muted-foreground">No repositories found.</p>
+            )}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={onDone} className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90">
+              Done
+            </button>
+            <button onClick={() => setStep('credentials')} className="text-xs text-muted-foreground hover:text-foreground px-2">
+              Edit token
             </button>
           </div>
         </div>

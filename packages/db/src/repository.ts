@@ -1,4 +1,4 @@
-import type { Task, TaskList, NewTask, NewTaskList, CalDavAccount, CalDavCalendarMap } from '@tasky/core';
+import type { Task, TaskList, NewTask, NewTaskList, CalDavAccount, CalDavCalendarMap, GitHubAccount, GitHubRepoMap } from '@tasky/core';
 
 export interface DatabaseAdapter {
   execute(sql: string, params?: unknown[]): Promise<void>;
@@ -363,6 +363,147 @@ export function createCalendarMapRepository(db: DatabaseAdapter) {
 
     async delete(listId: string): Promise<void> {
       await db.execute('DELETE FROM caldav_calendar_map WHERE list_id = ?', [listId]);
+    },
+  };
+}
+
+// ── GitHub ────────────────────────────────────────────────────────────────────
+
+function rowToGitHubAccount(row: Record<string, unknown>): GitHubAccount {
+  return {
+    id: row.id as string,
+    displayName: row.display_name as string,
+    token: row.token as string,
+    query: (row.query as string | null) ?? 'assignee:@me is:open',
+    readOnly: Boolean(row.read_only),
+    lastSyncedAt: (row.last_synced_at as string | null) ?? null,
+    syncEnabled: Boolean(row.sync_enabled),
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function rowToGitHubRepoMap(row: Record<string, unknown>): GitHubRepoMap {
+  return {
+    listId: row.list_id as string,
+    accountId: row.account_id as string,
+    repoFullName: row.repo_full_name as string,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+export function createGitHubAccountRepository(db: DatabaseAdapter) {
+  return {
+    async getAll(): Promise<GitHubAccount[]> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM github_accounts ORDER BY display_name ASC'
+      );
+      return rows.map(rowToGitHubAccount);
+    },
+
+    async getById(id: string): Promise<GitHubAccount | null> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM github_accounts WHERE id = ?',
+        [id]
+      );
+      return rows.length > 0 ? rowToGitHubAccount(rows[0]) : null;
+    },
+
+    async create(account: GitHubAccount): Promise<void> {
+      const now = new Date().toISOString();
+      await db.execute(
+        `INSERT INTO github_accounts
+         (id, display_name, token, query, read_only, last_synced_at, sync_enabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          account.id,
+          account.displayName,
+          account.token,
+          account.query,
+          account.readOnly ? 1 : 0,
+          account.lastSyncedAt ?? null,
+          account.syncEnabled ? 1 : 0,
+          now,
+          now,
+        ]
+      );
+    },
+
+    async update(id: string, updates: Partial<GitHubAccount>): Promise<void> {
+      const now = new Date().toISOString();
+      const fields: string[] = [];
+      const values: unknown[] = [];
+
+      if (updates.displayName !== undefined) { fields.push('display_name = ?'); values.push(updates.displayName); }
+      if (updates.token !== undefined) { fields.push('token = ?'); values.push(updates.token); }
+      if (updates.query !== undefined) { fields.push('query = ?'); values.push(updates.query); }
+      if (updates.readOnly !== undefined) { fields.push('read_only = ?'); values.push(updates.readOnly ? 1 : 0); }
+      if (updates.lastSyncedAt !== undefined) { fields.push('last_synced_at = ?'); values.push(updates.lastSyncedAt); }
+      if (updates.syncEnabled !== undefined) { fields.push('sync_enabled = ?'); values.push(updates.syncEnabled ? 1 : 0); }
+
+      if (fields.length === 0) return;
+
+      fields.push('updated_at = ?');
+      values.push(now);
+      values.push(id);
+
+      await db.execute(
+        `UPDATE github_accounts SET ${fields.join(', ')} WHERE id = ?`,
+        values
+      );
+    },
+
+    async delete(id: string): Promise<void> {
+      await db.execute('DELETE FROM github_accounts WHERE id = ?', [id]);
+    },
+
+    async setLastSynced(id: string, at: string): Promise<void> {
+      await db.execute(
+        'UPDATE github_accounts SET last_synced_at = ?, updated_at = ? WHERE id = ?',
+        [at, at, id]
+      );
+    },
+  };
+}
+
+export function createGitHubRepoMapRepository(db: DatabaseAdapter) {
+  return {
+    async getAll(): Promise<GitHubRepoMap[]> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM github_repo_map'
+      );
+      return rows.map(rowToGitHubRepoMap);
+    },
+
+    async getByAccount(accountId: string): Promise<GitHubRepoMap[]> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM github_repo_map WHERE account_id = ?',
+        [accountId]
+      );
+      return rows.map(rowToGitHubRepoMap);
+    },
+
+    async getByList(listId: string): Promise<GitHubRepoMap | null> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM github_repo_map WHERE list_id = ?',
+        [listId]
+      );
+      return rows.length > 0 ? rowToGitHubRepoMap(rows[0]) : null;
+    },
+
+    async upsert(map: GitHubRepoMap): Promise<void> {
+      const now = new Date().toISOString();
+      await db.execute(
+        `INSERT OR REPLACE INTO github_repo_map
+         (list_id, account_id, repo_full_name, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [map.listId, map.accountId, map.repoFullName, now, now]
+      );
+    },
+
+    async delete(listId: string): Promise<void> {
+      await db.execute('DELETE FROM github_repo_map WHERE list_id = ?', [listId]);
     },
   };
 }

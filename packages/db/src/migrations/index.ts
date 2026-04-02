@@ -79,4 +79,41 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       CREATE INDEX IF NOT EXISTS idx_tasks_source_event_uid ON tasks(source_event_uid);
     `,
   },
+  {
+    version: 4,
+    sql: `
+      CREATE TABLE IF NOT EXISTS github_accounts (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        token TEXT NOT NULL,
+        query TEXT NOT NULL DEFAULT 'assignee:@me is:open',
+        last_synced_at TEXT,
+        sync_enabled INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS github_repo_map (
+        list_id TEXT PRIMARY KEY REFERENCES lists(id) ON DELETE CASCADE,
+        account_id TEXT NOT NULL REFERENCES github_accounts(id) ON DELETE CASCADE,
+        repo_full_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_github_repo_map_account_id ON github_repo_map(account_id);
+    `,
+  },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE github_accounts ADD COLUMN query TEXT NOT NULL DEFAULT 'assignee:@me is:open';
+    `,
+  },
+  {
+    version: 6,
+    sql: `
+      ALTER TABLE github_accounts ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];

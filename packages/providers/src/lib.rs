@@ -1,4 +1,5 @@
 pub mod caldav;
+pub mod github;
 
 use serde::{Deserialize, Serialize};
 
@@ -139,6 +140,7 @@ pub mod dispatch {
     ) -> Result<bool, String> {
         match provider {
             "caldav" => caldav::CalDavProvider::test_connection(config).await,
+            "github" => github::GitHubProvider::test_connection(config).await,
             _ => Err(format!("unknown provider: {provider}")),
         }
     }
@@ -149,6 +151,7 @@ pub mod dispatch {
     ) -> Result<Vec<ProviderCalendar>, String> {
         match provider {
             "caldav" => caldav::CalDavProvider::discover_calendars(config).await,
+            "github" => github::GitHubProvider::discover_calendars(config).await,
             _ => Err(format!("unknown provider: {provider}")),
         }
     }
@@ -162,6 +165,7 @@ pub mod dispatch {
     ) -> Result<SyncOutput, String> {
         match provider {
             "caldav" => caldav::CalDavProvider::sync(config, calendar_id, pending, deleted).await,
+            "github" => github::GitHubProvider::sync(config, calendar_id, pending, deleted).await,
             _ => Err(format!("unknown provider: {provider}")),
         }
     }
@@ -176,6 +180,10 @@ pub mod dispatch {
         match provider {
             "caldav" => {
                 caldav::CalDavProvider::fetch_events(config, calendar_id, range_start, range_end)
+                    .await
+            }
+            "github" => {
+                github::GitHubProvider::fetch_events(config, calendar_id, range_start, range_end)
                     .await
             }
             _ => Err(format!("unknown provider: {provider}")),

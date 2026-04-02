@@ -160,3 +160,24 @@ None currently.
 - `stores/sync.ts` and `stores/events.ts` call the generic IPC bridge with `'caldav'` as provider ID
 - **Cargo workspace**: root `Cargo.toml` declares both `apps/desktop/src-tauri` and `packages/providers` as workspace members
 - **To add a new provider** (e.g. Google Calendar, GitHub Issues): add a new Rust crate or module under `packages/providers/src/<name>/`, implement `SyncProvider`, add `#[tauri::command]` wrappers in `apps/desktop/src-tauri/src/providers/<name>/mod.rs`, register in `lib.rs` — zero TS changes required
+
+### GitHub Provider (post-Phase 5)
+- **Rust**: `packages/providers/src/github/mod.rs` — `GitHubProvider` implementing `SyncProvider`
+- Uses `reqwest 0.12` with `rustls-tls` (added to `packages/providers/Cargo.toml`)
+- Auth: `Authorization: Bearer {token}` header; `X-GitHub-Api-Version: 2022-11-28`
+- `test_connection` → `GET /user`; `discover_calendars` → `GET /user/repos?type=all` (paginated)
+- `sync` → POST/PATCH issues for pending tasks (push phase uses regular Issues REST API); fetches matching issues via Search API (pull phase)
+- `fetch_events` → returns empty (GitHub issues are not calendar events)
+- Pull requests filtered out: `is:issue` appended to query + `pull_request.is_none()` belt-and-suspenders check
+- **Mapping**: title↔title, body↔description+notes (notes appended after `---` separator), labels↔tags, state(open/closed)↔completed, closed_at↔completedAt
+- **No due date sync**: GitHub issues have no native due date field
+- **etag**: GitHub `updated_at` ISO timestamp used as etag for change detection
+- **remote_id**: GitHub issue number stored as string in `caldavUid` column (generic provider UID reuse)
+- **"Delete"**: Issues cannot be deleted via API (without admin); closing them instead
+- **Configurable query**: `query` field on `GitHubAccount` (default `"assignee:@me is:open"`); passed as `GitHubConfig.query` to Rust; pull phase calls `GET /search/issues?q={user_query} repo:{owner/repo} is:issue`; `#[serde(default)]` means old configs without `query` continue to work
+- **read_only mode**: `read_only: bool` field on `GitHubConfig` (`#[serde(default)]`); when true, the push and delete phases are skipped entirely — only the pull (Search API fetch) runs. Migration 6 adds `read_only INTEGER NOT NULL DEFAULT 0` to `github_accounts`. `readOnly: boolean` added to `GitHubAccount` and `NewGitHubAccount` types. Settings UI shows a checkbox "Read-only — pull issues in only, never push changes back to GitHub".
+- **DB**: Migration 4 adds `github_accounts` (with `query TEXT NOT NULL DEFAULT 'assignee:@me is:open'`) and `github_repo_map` tables. Migration 5 adds `query` column (belt-and-suspenders; covered by migration 4 DEFAULT). Migration 6 adds `read_only INTEGER NOT NULL DEFAULT 0`.
+- **TS types**: `GitHubAccount` and `GitHubRepoMap` in `@tasky/core`; `GitHubAccount.query: string`; `GitHubAccount.readOnly: boolean`
+- **DB repos**: `createGitHubAccountRepository` and `createGitHubRepoMapRepository` in `@tasky/db`; `query` and `readOnly` read/written in all repo methods
+- **Sync store**: `githubAccounts` + `githubRepoMaps` state added to `useSyncStore`; `syncAll` runs CalDAV + GitHub in sequence; `syncGitHubAccount` passes `{ token, query, read_only }` as config
+- **Settings UI**: "GitHub Accounts" section below CalDAV; PAT entry + query input (pre-filled `assignee:@me is:open`, hint explains syntax) + read-only checkbox → test → discover repos → link/unlink repos to lists
