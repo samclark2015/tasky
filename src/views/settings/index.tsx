@@ -223,7 +223,7 @@ function CalDavAccountRow({
         <Wifi className="h-4 w-4 text-primary flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{account.displayName}</p>
-          <p className="text-xs text-muted-foreground truncate">{account.username} · {new URL(account.serverUrl).hostname}</p>
+          <p className="text-xs text-muted-foreground truncate">{account.lastSyncedAt ? `Last synced ${new Date(account.lastSyncedAt).toLocaleTimeString()}` : 'Never synced'}</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{myMaps.length} calendar{myMaps.length !== 1 ? 's' : ''}</span>
