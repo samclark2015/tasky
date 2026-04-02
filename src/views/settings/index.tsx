@@ -107,20 +107,44 @@ export function SettingsView() {
               <p className="text-xs text-foreground">Auto-sync interval</p>
               <p className="text-xs text-muted-foreground mt-0.5">Automatically sync with connected accounts</p>
             </div>
-            <select
-              value={syncIntervalMinutes ?? 'off'}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSyncInterval(v === 'off' ? null : (Number(v) as SyncInterval));
-              }}
-              className="text-xs rounded-md border border-border bg-background px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="off">Off</option>
-              <option value="5">Every 5 minutes</option>
-              <option value="15">Every 15 minutes</option>
-              <option value="30">Every 30 minutes</option>
-              <option value="60">Every hour</option>
-            </select>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button className="flex items-center gap-1.5 text-xs rounded-md border border-border bg-background px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                  {syncIntervalMinutes == null ? 'Off'
+                    : syncIntervalMinutes === 5 ? 'Every 5 minutes'
+                    : syncIntervalMinutes === 15 ? 'Every 15 minutes'
+                    : syncIntervalMinutes === 30 ? 'Every 30 minutes'
+                    : 'Every hour'}
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={4}
+                  className="z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
+                >
+                  {([
+                    { value: 'off', label: 'Off' },
+                    { value: '5', label: 'Every 5 minutes' },
+                    { value: '15', label: 'Every 15 minutes' },
+                    { value: '30', label: 'Every 30 minutes' },
+                    { value: '60', label: 'Every hour' },
+                  ] as const).map(({ value, label }) => (
+                    <DropdownMenu.Item
+                      key={value}
+                      onSelect={() => setSyncInterval(value === 'off' ? null : (Number(value) as SyncInterval))}
+                      className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
+                    >
+                      {(syncIntervalMinutes == null && value === 'off') || String(syncIntervalMinutes) === value
+                        ? <Check className="h-3 w-3" />
+                        : <span className="h-3 w-3" />}
+                      {label}
+                    </DropdownMenu.Item>
+                  ))}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </section>
 

@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useUIStore, useTaskStore, useListStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
 import {
   X, Trash2, Circle, CheckCircle2, Calendar, Flag, Tag,
-  AlignLeft, Clock, List, ChevronRight, Plus,
+  AlignLeft, Clock, List, ChevronRight, ChevronDown, Check, Plus,
 } from 'lucide-react';
 import { cn, formatDate, isOverdue, minutesToHHMM, hhmmToMinutes, localDateFromString } from '@/lib/utils';
 import type { Task } from '@/types/types';
@@ -315,16 +316,39 @@ export function DetailsPanel() {
               <List className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-xs text-muted-foreground mb-0.5">List</p>
-                <select
-                  value={task.listId ?? ''}
-                  onChange={(e) => save({ listId: e.target.value || null })}
-                  className="text-sm bg-transparent outline-none text-foreground"
-                >
-                  <option value="">Inbox</option>
-                  {lists.map((l) => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild>
+                    <button className="text-sm text-foreground flex items-center gap-1 outline-none hover:text-foreground/80">
+                      {task.listId ? (lists.find((l) => l.id === task.listId)?.name ?? 'Inbox') : 'Inbox'}
+                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Portal>
+                    <DropdownMenu.Content
+                      align="start"
+                      sideOffset={4}
+                      className="z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
+                    >
+                      <DropdownMenu.Item
+                        onSelect={() => save({ listId: null })}
+                        className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
+                      >
+                        {!task.listId ? <Check className="h-3 w-3" /> : <span className="h-3 w-3" />}
+                        Inbox
+                      </DropdownMenu.Item>
+                      {lists.map((l) => (
+                        <DropdownMenu.Item
+                          key={l.id}
+                          onSelect={() => save({ listId: l.id })}
+                          className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
+                        >
+                          {task.listId === l.id ? <Check className="h-3 w-3" /> : <span className="h-3 w-3" />}
+                          {l.name}
+                        </DropdownMenu.Item>
+                      ))}
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Portal>
+                </DropdownMenu.Root>
               </div>
             </div>
 

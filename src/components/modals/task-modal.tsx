@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { Task, RecurrenceRule } from '@/types/types';
 import { useTaskStore, useListStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
 import { cn, minutesToHHMM, hhmmToMinutes, localDateFromString } from '@/lib/utils';
-import { X, Calendar, Tag, AlignLeft, Clock, Flag, List } from 'lucide-react';
+import { X, Calendar, Tag, AlignLeft, Clock, Flag, List, ChevronDown, Check } from 'lucide-react';
 import { TagInput } from '@/components/task/tag-input';
 import { RecurrenceEditor } from '@/components/task/recurrence-editor';
 
@@ -262,16 +263,39 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
           {lists.length > 0 && (
             <div className="flex items-center gap-2">
               <List className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <select
-                value={listId}
-                onChange={(e) => setListId(e.target.value)}
-                className="flex-1 text-sm bg-transparent outline-none text-foreground"
-              >
-                <option value="">No list (Inbox)</option>
-                {lists.map((l) => (
-                  <option key={l.id} value={l.id}>{l.name}</option>
-                ))}
-              </select>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button className="flex-1 text-sm text-left text-foreground flex items-center gap-1 outline-none hover:text-foreground/80">
+                    {listId ? (lists.find((l) => l.id === listId)?.name ?? 'No list (Inbox)') : 'No list (Inbox)'}
+                    <ChevronDown className="h-3 w-3 text-muted-foreground ml-auto flex-shrink-0" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    align="start"
+                    sideOffset={4}
+                    className="z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
+                  >
+                    <DropdownMenu.Item
+                      onSelect={() => setListId('')}
+                      className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
+                    >
+                      {!listId ? <Check className="h-3 w-3" /> : <span className="h-3 w-3" />}
+                      No list (Inbox)
+                    </DropdownMenu.Item>
+                    {lists.map((l) => (
+                      <DropdownMenu.Item
+                        key={l.id}
+                        onSelect={() => setListId(l.id)}
+                        className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
+                      >
+                        {listId === l.id ? <Check className="h-3 w-3" /> : <span className="h-3 w-3" />}
+                        {l.name}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
             </div>
           )}
 
