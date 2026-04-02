@@ -185,9 +185,9 @@ export async function providerSync(
 ): Promise<SyncOutput> {
   const result = await invoke<WireSyncOutput>(`${providerId}_sync_account`, {
     ...config,
-    calendar_href: calendarId,
-    pending_tasks: pending.map(toWirePushInput),
-    deleted_hrefs: deleted.map((d) => ({ href: d.href, etag: d.etag })),
+    calendarHref: calendarId,
+    pendingTasks: pending.map(toWirePushInput),
+    deletedHrefs: deleted.map((d) => ({ href: d.href, etag: d.etag })),
   });
   return fromWireSyncOutput(result);
 }
@@ -203,9 +203,9 @@ export async function providerFetchEvents(
     `${providerId}_fetch_events`,
     {
       ...config,
-      calendar_href: calendarId,
-      range_start: rangeStart,
-      range_end: rangeEnd,
+      calendarHref: calendarId,
+      rangeStart,
+      rangeEnd,
     },
   );
   return result.events.map(fromWireEvent);

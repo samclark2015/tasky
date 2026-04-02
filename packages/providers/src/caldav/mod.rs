@@ -155,9 +155,9 @@ impl SyncProvider for CalDavProvider {
             });
 
             let put_result = if let Some(etag) = &task.etag {
-                client.request(PutResource::new(&resource_href).update(ical_data, "text/calendar", etag)).await
+                client.request(PutResource::new(&resource_href).update(ical_data, "text/calendar; charset=utf-8", etag)).await
             } else {
-                client.request(PutResource::new(&resource_href).create(ical_data, "text/calendar")).await
+                client.request(PutResource::new(&resource_href).create(ical_data, "text/calendar; charset=utf-8")).await
             };
 
             match put_result {

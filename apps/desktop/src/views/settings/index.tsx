@@ -71,7 +71,7 @@ export function SettingsView() {
             <WifiOff className="h-4 w-4 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-medium">Sync failed</p>
-              <p className="text-destructive/80 mt-0.5">{lastSyncError}</p>
+              <p className="text-destructive/80 mt-0.5 select-all cursor-text break-all">{lastSyncError}</p>
             </div>
           </div>
         )}
