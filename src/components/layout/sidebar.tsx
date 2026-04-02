@@ -172,6 +172,9 @@ export function Sidebar() {
             </>
           )}
 
+          {!sidebarOpen && lists.length > 0 && (
+            <hr className="my-2 mx-1 border-sidebar-border" />
+          )}
           {!sidebarOpen && lists.map((list) => (
             <button
               key={list.id}
