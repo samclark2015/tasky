@@ -72,4 +72,11 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       CREATE INDEX IF NOT EXISTS idx_tasks_sync_status ON tasks(sync_status);
     `,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE tasks ADD COLUMN source_event_uid TEXT;
+      CREATE INDEX IF NOT EXISTS idx_tasks_source_event_uid ON tasks(source_event_uid);
+    `,
+  },
 ];

@@ -1,16 +1,17 @@
-import { useRef, useMemo, useCallback, useState } from 'react';
+import { useRef, useMemo, useCallback, useState, useEffect } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
-import interactionPlugin, { type EventResizeDoneArg, type DateClickArg, type SelectArg } from '@fullcalendar/interaction';
-import type { EventClickArg, EventDropArg, EventInput, EventMountArg } from '@fullcalendar/core';
-import { useTaskStore, useListStore, useUIStore } from '@/stores';
+import interactionPlugin, { type EventResizeDoneArg, type DateClickArg } from '@fullcalendar/interaction';
+import type { EventClickArg, EventDropArg, EventInput, EventMountArg, DatesSetArg, DateSelectArg } from '@fullcalendar/core';
+import { useTaskStore, useListStore, useUIStore, useEventStore, useSyncStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
 import { ViewHeader } from '@/components/layout/view-header';
 import { Plus } from 'lucide-react';
 import { TaskModal } from '@/components/modals/task-modal';
 import { TaskContextMenu } from '@/components/task/task-context-menu';
-import type { Task } from '@core/types';
+import { EventDetailPopover } from './event-detail-popover';
+import type { Task, CalendarEvent } from '@core/types';
 
 const PRIORITY_COLORS: Record<string, string> = {
   high: 'hsl(0 84.2% 60.2%)',
@@ -22,11 +23,21 @@ export function CalendarView() {
   const { tasks, updateTask } = useTaskStore();
   const { lists } = useListStore();
   const { selectTask } = useUIStore();
+  const { events: calendarEvents, fetchEvents } = useEventStore();
+  const { accounts, calendarMaps } = useSyncStore();
   const { adapter } = useApp();
   const calendarRef = useRef<FullCalendar>(null);
   const [showNewTask, setShowNewTask] = useState(false);
-  const [newTaskDefaults, setNewTaskDefaults] = useState<{ dueDate?: string; timeEstimate?: number }>({});
+  const [newTaskDefaults, setNewTaskDefaults] = useState<{ 
+    title?: string;
+    description?: string;
+    dueDate?: string; 
+    timeEstimate?: number; 
+    sourceEventUid?: string;
+  }>({});
   const [contextMenu, setContextMenu] = useState<{ task: Task; x: number; y: number } | null>(null);
+  const [eventPopover, setEventPopover] = useState<{ event: CalendarEvent; x: number; y: number } | null>(null);
+  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
 
   const listColorMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -36,8 +47,34 @@ export function CalendarView() {
     return map;
   }, [lists]);
 
+  // Fetch calendar events when accounts/maps or date range changes
+  useEffect(() => {
+    if (!dateRange) return;
+    
+    for (const map of calendarMaps) {
+      const account = accounts.find(a => a.id === map.accountId);
+      if (!account || !account.syncEnabled) continue;
+      
+      fetchEvents(
+        account.serverUrl,
+        account.username,
+        account.password,
+        map.calendarHref,
+        dateRange.start,
+        dateRange.end
+      );
+    }
+  }, [dateRange, accounts, calendarMaps, fetchEvents]);
+
+  const handleDatesSet = useCallback((info: DatesSetArg) => {
+    setDateRange({
+      start: info.startStr,
+      end: info.endStr,
+    });
+  }, []);
+
   const events: EventInput[] = useMemo(() => {
-    return Array.from(tasks.values())
+    const taskEvents: EventInput[] = Array.from(tasks.values())
       .filter((t) => t.dueDate && t.parentId === null)
       .map((t) => {
         const listColor = t.listId ? listColorMap.get(t.listId) : undefined;
@@ -63,14 +100,43 @@ export function CalendarView() {
           borderColor: t.completed ? 'hsl(215.4 16.3% 46.9%)' : color,
           textColor: '#fff',
           classNames: t.completed ? ['fc-event-completed'] : [],
-          extendedProps: { task: t },
+          extendedProps: { task: t, type: 'task' },
         };
       });
-  }, [tasks, listColorMap]);
+
+    // Add calendar events
+    const eventInputs: EventInput[] = Array.from(calendarEvents.values()).map((e) => {
+      const color = e.color ?? 'hsl(217.2 91.2% 59.8%)';
+      return {
+        id: `event-${e.uid}`,
+        title: e.summary,
+        start: e.dtstart ?? undefined,
+        end: e.dtend ?? undefined,
+        backgroundColor: color,
+        borderColor: color,
+        textColor: '#fff',
+        editable: false,
+        extendedProps: { event: e, type: 'event' },
+      };
+    });
+
+    return [...taskEvents, ...eventInputs];
+  }, [tasks, listColorMap, calendarEvents]);
 
   const handleEventClick = useCallback(
     (info: EventClickArg) => {
-      selectTask(info.event.id);
+      const type = info.event.extendedProps.type;
+      if (type === 'task') {
+        selectTask(info.event.id);
+      } else if (type === 'event') {
+        const event = info.event.extendedProps.event as CalendarEvent;
+        const rect = info.el.getBoundingClientRect();
+        setEventPopover({ 
+          event, 
+          x: rect.left + rect.width / 2, 
+          y: rect.bottom 
+        });
+      }
     },
     [selectTask]
   );
@@ -88,7 +154,7 @@ export function CalendarView() {
     setShowNewTask(true);
   }, []);
 
-  const handleSelect = useCallback((info: SelectArg) => {
+  const handleSelect = useCallback((info: DateSelectArg) => {
     const { start, end, allDay } = info;
     const dueDate = allDay ? start.toISOString().split('T')[0] : start.toISOString();
     const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
@@ -128,6 +194,27 @@ export function CalendarView() {
     },
     [adapter, updateTask]
   );
+
+  const handleAddEventToTasks = useCallback((event: CalendarEvent) => {
+    const dueDate = event.dtstart ?? new Date().toISOString();
+    let timeEstimate: number | undefined;
+    
+    if (event.dtstart && event.dtend) {
+      const start = new Date(event.dtstart);
+      const end = new Date(event.dtend);
+      const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+      timeEstimate = durationMinutes > 0 ? durationMinutes : undefined;
+    }
+
+    setNewTaskDefaults({
+      title: event.summary,
+      description: event.description ?? '',
+      dueDate,
+      timeEstimate,
+      sourceEventUid: event.uid,
+    });
+    setShowNewTask(true);
+  }, []);
 
   return (
     <>
@@ -171,6 +258,7 @@ export function CalendarView() {
             eventDrop={handleEventDrop}
             eventResize={handleEventResize}
             eventDidMount={handleEventDidMount}
+            datesSet={handleDatesSet}
             eventTimeFormat={{ hour: 'numeric', minute: '2-digit', meridiem: 'short' }}
             slotMinTime="06:00:00"
             slotMaxTime="23:00:00"
@@ -190,6 +278,15 @@ export function CalendarView() {
           task={contextMenu.task}
           pos={{ x: contextMenu.x, y: contextMenu.y }}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {eventPopover && (
+        <EventDetailPopover
+          event={eventPopover.event}
+          pos={{ x: eventPopover.x, y: eventPopover.y }}
+          onClose={() => setEventPopover(null)}
+          onAddToTasks={handleAddEventToTasks}
         />
       )}
     </>

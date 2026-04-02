@@ -11,7 +11,15 @@ interface TaskModalProps {
   /** If provided, editing an existing task. If null, creating new. */
   task?: Task | null;
   /** Default values when creating */
-  defaults?: { listId?: string; dueDate?: string; parentId?: string; timeEstimate?: number };
+  defaults?: { 
+    title?: string;
+    description?: string;
+    listId?: string; 
+    dueDate?: string; 
+    parentId?: string; 
+    timeEstimate?: number;
+    sourceEventUid?: string;
+  };
   onClose: () => void;
 }
 
@@ -46,8 +54,8 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   const { lists } = useListStore();
   const { adapter } = useApp();
 
-  const [title, setTitle] = useState(task?.title ?? '');
-  const [description, setDescription] = useState(task?.description ?? '');
+  const [title, setTitle] = useState(task?.title ?? defaults?.title ?? '');
+  const [description, setDescription] = useState(task?.description ?? defaults?.description ?? '');
   const parsed = parseDueDate(task?.dueDate ?? defaults?.dueDate);
   const [dueDate, setDueDate] = useState(parsed.date);
   const [dueTime, setDueTime] = useState(parsed.time);
@@ -98,6 +106,7 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
           timeEstimate: estimateMinutes,
           recurrence,
           parentId: defaults?.parentId ?? null,
+          sourceEventUid: defaults?.sourceEventUid ?? null,
         });
       }
       onClose();

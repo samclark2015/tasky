@@ -1,4 +1,4 @@
-use super::ical::{parse_vtodos, vtodo_to_ical, VTodo};
+use super::ical::{parse_vevents, parse_vtodos, vtodo_to_ical, VEvent, VTodo};
 use http::Uri;
 use hyper::body::Incoming;
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
@@ -51,13 +51,19 @@ pub struct ConnectionResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CalendarInfo {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RemoteEvent {
     pub href: String,
-    pub display_name: Option<String>,
-    pub color: Option<String>,
-    pub supports_sync: bool,
+    pub etag: String,
+    pub vevent: VEvent,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FetchEventsResult {
+    pub events: Vec<RemoteEvent>,
+    pub error: Option<String>,
+}
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DiscoverResult {
@@ -84,6 +90,7 @@ pub struct SyncTaskInput {
     pub caldav_uid: Option<String>,
     pub sync_status: String,
     pub updated_at: String,
+    pub source_event_uid: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -246,6 +253,7 @@ pub async fn caldav_sync_account(
                 Some(task.notes.clone())
             },
             time_estimate: task.time_estimate,
+            source_event_uid: task.source_event_uid.clone(),
         };
 
         let ical_data = vtodo_to_ical(&vtodo);
@@ -362,6 +370,87 @@ pub async fn caldav_sync_account(
         "delete_errors": delete_errors,
         "remote_tasks": remote_tasks,
     }))
+}
+
+#[tauri::command]
+pub async fn caldav_fetch_events(
+    server_url: String,
+    username: String,
+    password: String,
+    calendar_href: String,
+    range_start: String,
+    range_end: String,
+) -> Result<FetchEventsResult, String> {
+    let client = match make_client(&server_url, &username, &password) {
+        Ok(c) => c,
+        Err(e) => return Ok(FetchEventsResult { events: vec![], error: Some(e) }),
+    };
+
+    // Fetch calendar events (VEVENT) for the specified date range
+    let list_req = match ListCalendarResources::new(&calendar_href).with_component("VEVENT") {
+        Ok(r) => r,
+        Err(e) => {
+            return Ok(FetchEventsResult {
+                events: vec![],
+                error: Some(format!("Invalid component: {e}")),
+            });
+        }
+    };
+
+    let resource_list = match client.request(list_req).await {
+        Ok(r) => r,
+        Err(e) => {
+            return Ok(FetchEventsResult {
+                events: vec![],
+                error: Some(format!("Failed to list events: {e}")),
+            });
+        }
+    };
+
+    let hrefs: Vec<String> = resource_list
+        .resources
+        .iter()
+        .map(|r| r.href.clone())
+        .collect();
+
+    let mut remote_events: Vec<RemoteEvent> = Vec::new();
+    if !hrefs.is_empty() {
+        match client
+            .request(
+                GetCalendarResources::new(&calendar_href)
+                    .with_hrefs(hrefs.iter().map(|s| s.as_str())),
+            )
+            .await
+        {
+            Ok(resp) => {
+                for resource in resp.resources {
+                    if let Ok(content) = resource.content {
+                        let vevents = parse_vevents(&content.data);
+                        for vevent in vevents {
+                            // Filter events by date range if needed
+                            // For now, include all events
+                            remote_events.push(RemoteEvent {
+                                href: resource.href.clone(),
+                                etag: content.etag.clone(),
+                                vevent,
+                            });
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                return Ok(FetchEventsResult {
+                    events: vec![],
+                    error: Some(format!("Failed to fetch event data: {e}")),
+                });
+            }
+        }
+    }
+
+    Ok(FetchEventsResult {
+        events: remote_events,
+        error: None,
+    })
 }
 
 fn priority_str_to_num(p: &str) -> u32 {

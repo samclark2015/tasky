@@ -27,6 +27,7 @@ export interface Task {
   etag: string | null;
   caldavUid: string | null;
   syncStatus: 'synced' | 'pending' | 'conflict';
+  sourceEventUid: string | null;
 }
 
 export type NewTask = Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>;
@@ -86,4 +87,15 @@ export interface SyncResult {
   deleted: number;
   conflicts: number;
   errors: string[];
+}
+
+export interface CalendarEvent {
+  uid: string;
+  calendarHref: string;
+  summary: string;
+  description: string | null;
+  dtstart: string | null;
+  dtend: string | null;
+  location: string | null;
+  color: string | null;
 }

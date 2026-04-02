@@ -1,4 +1,4 @@
-use icalendar::{Calendar, CalendarComponent, Component, Todo, TodoStatus};
+use icalendar::{Calendar, CalendarComponent, Component, Event, Todo, TodoStatus};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,6 +16,18 @@ pub struct VTodo {
     pub related_to: Option<String>,
     pub notes: Option<String>,
     pub time_estimate: Option<i64>,
+    pub source_event_uid: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VEvent {
+    pub uid: String,
+    pub summary: String,
+    pub description: Option<String>,
+    pub dtstart: Option<String>,
+    pub dtend: Option<String>,
+    pub location: Option<String>,
+    pub color: Option<String>,
 }
 
 pub fn parse_vtodos(ical_text: &str) -> Vec<VTodo> {
@@ -93,6 +105,9 @@ fn todo_to_vtodo(todo: &Todo) -> Option<VTodo> {
         .property_value("X-TASKY-TIME-ESTIMATE")
         .and_then(|s| s.parse::<i64>().ok());
     let completed_at = todo.property_value("COMPLETED").map(|s| s.to_string());
+    let source_event_uid = todo
+        .property_value("X-TASKY-SOURCE-EVENT-UID")
+        .map(|s| s.to_string());
 
     Some(VTodo {
         uid,
@@ -108,6 +123,7 @@ fn todo_to_vtodo(todo: &Todo) -> Option<VTodo> {
         related_to,
         notes,
         time_estimate,
+        source_event_uid,
     })
 }
 
@@ -169,6 +185,75 @@ pub fn vtodo_to_ical(vtodo: &VTodo) -> String {
         todo.add_property("X-TASKY-TIME-ESTIMATE", &te.to_string());
     }
 
+    if let Some(seu) = &vtodo.source_event_uid {
+        todo.add_property("X-TASKY-SOURCE-EVENT-UID", seu);
+    }
+
     let calendar = Calendar::new().push(todo).done();
     calendar.to_string()
+}
+
+pub fn parse_vevents(ical_text: &str) -> Vec<VEvent> {
+    let Ok(calendar) = ical_text.parse::<Calendar>() else {
+        return vec![];
+    };
+
+    let mut events = Vec::new();
+    for component in &calendar.components {
+        if let CalendarComponent::Event(event) = component {
+            if let Some(vevent) = event_to_vevent(event) {
+                events.push(vevent);
+            }
+        }
+    }
+    events
+}
+
+fn event_to_vevent(event: &Event) -> Option<VEvent> {
+    let uid = event.get_uid()?.to_string();
+    let summary = event.get_summary().unwrap_or("").to_string();
+
+    let description = event.get_description().map(|s| s.to_string());
+    let location = event.get_location().map(|s| s.to_string());
+    let color = event.property_value("COLOR").map(|s| s.to_string());
+
+    let dtstart = event.get_start().map(|dt| {
+        use icalendar::DatePerhapsTime;
+        match dt {
+            DatePerhapsTime::DateTime(d) => {
+                use icalendar::CalendarDateTime;
+                match d {
+                    CalendarDateTime::Floating(naive) => naive.to_string(),
+                    CalendarDateTime::Utc(utc) => utc.to_rfc3339(),
+                    CalendarDateTime::WithTimezone { date_time, tzid: _ } => date_time.to_string(),
+                }
+            }
+            DatePerhapsTime::Date(d) => d.to_string(),
+        }
+    });
+
+    let dtend = event.get_end().map(|dt| {
+        use icalendar::DatePerhapsTime;
+        match dt {
+            DatePerhapsTime::DateTime(d) => {
+                use icalendar::CalendarDateTime;
+                match d {
+                    CalendarDateTime::Floating(naive) => naive.to_string(),
+                    CalendarDateTime::Utc(utc) => utc.to_rfc3339(),
+                    CalendarDateTime::WithTimezone { date_time, tzid: _ } => date_time.to_string(),
+                }
+            }
+            DatePerhapsTime::Date(d) => d.to_string(),
+        }
+    });
+
+    Some(VEvent {
+        uid,
+        summary,
+        description,
+        dtstart,
+        dtend,
+        location,
+        color,
+    })
 }

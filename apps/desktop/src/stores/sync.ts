@@ -202,6 +202,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
         caldav_uid: t.caldavUid,
         sync_status: t.syncStatus,
         updated_at: t.updatedAt,
+        source_event_uid: t.sourceEventUid,
       }));
 
       try {
@@ -226,6 +227,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
               related_to: string | null;
               notes: string | null;
               time_estimate: number | null;
+              source_event_uid: string | null;
             };
           }>;
           fetch_error?: string;
@@ -322,6 +324,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
               etag: remote.etag,
               caldavUid: vtodo.uid,
               syncStatus: 'synced',
+              sourceEventUid: vtodo.source_event_uid ?? null,
             };
             await taskRepo.create(newTask);
             result.created++;

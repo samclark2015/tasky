@@ -62,6 +62,7 @@ export const useTaskStore = create<TaskStore>()(
         etag: null,
         caldavUid: null,
         syncStatus: 'pending',
+        sourceEventUid: partial.sourceEventUid ?? null,
       };
       await repo.create(task);
       set((state) => {
