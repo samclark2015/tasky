@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ViewHeader } from '@/components/layout/view-header';
 import { useApp } from '@/components/app-provider';
 import { useTaskStore, useListStore, useSyncStore } from '@/stores';
@@ -22,8 +23,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type PanelState = 'list' | 'add-caldav' | 'add-github';
-
 type EditingAccount =
   | { type: 'caldav'; account: CalDavAccount }
   | { type: 'github'; account: GitHubAccount }
@@ -39,7 +38,7 @@ export function SettingsView() {
   } = useSyncStore();
   const { tasks } = useTaskStore();
   const { lists } = useListStore();
-  const [panel, setPanel] = useState<PanelState>('list');
+  const [panel, setPanel] = useState<'add-caldav' | 'add-github' | null>(null);
   const [editingAccount, setEditingAccount] = useState<EditingAccount>(null);
 
   const hasAnyAccount = accounts.length > 0 || githubAccounts.length > 0;
@@ -97,24 +96,51 @@ export function SettingsView() {
           </div>
         )}
 
-        {/* ── CalDAV Accounts ─────────────────────────────────────────────── */}
+        {/* ── Accounts ─────────────────────────────────────────────────────── */}
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-foreground">CalDAV Accounts</h2>
-            <button
-              onClick={() => { setEditingAccount(null); setPanel('add-caldav'); }}
-              className="flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Account
-            </button>
+            <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button className="flex items-center gap-1 text-xs text-primary hover:underline">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Account
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={4}
+                  className="z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
+                >
+                  <DropdownMenu.Item
+                    onSelect={() => { setEditingAccount(null); setPanel('add-caldav'); }}
+                    className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
+                  >
+                    <Wifi className="h-3.5 w-3.5 text-muted-foreground" />
+                    CalDAV Account
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => { setEditingAccount(null); setPanel('add-github'); }}
+                    className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
+                  >
+                    <Github className="h-3.5 w-3.5 text-muted-foreground" />
+                    GitHub Account
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
 
-          {accounts.length === 0 && panel !== 'add-caldav' && (
+          {!hasAnyAccount && (
             <div className="text-center py-8 text-sm text-muted-foreground">
-              <Wifi className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              <p>No CalDAV accounts connected.</p>
-              <p className="text-xs mt-1">Connect to Fastmail, iCloud, Nextcloud, or any CalDAV server.</p>
+              <div className="flex items-center justify-center gap-3 mb-2 opacity-30">
+                <Wifi className="h-7 w-7" />
+                <Github className="h-7 w-7" />
+              </div>
+              <p>No accounts connected.</p>
+              <p className="text-xs mt-1">Add a CalDAV or GitHub account to start syncing.</p>
             </div>
           )}
 
@@ -128,40 +154,6 @@ export function SettingsView() {
               onDelete={() => adapter && deleteAccount(adapter, account.id)}
             />
           ))}
-        </section>
-
-        {/* Add CalDAV form (inline, new accounts only) */}
-        {panel === 'add-caldav' && !editingAccount && adapter && (
-          <AddCalDavAccountForm
-            key="new-caldav"
-            existing={null}
-            adapter={adapter}
-            lists={lists}
-            calendarMaps={calendarMaps}
-            onDone={() => { setPanel('list'); }}
-          />
-        )}
-
-        {/* ── GitHub Accounts ──────────────────────────────────────────────── */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-foreground">GitHub Accounts</h2>
-            <button
-              onClick={() => { setEditingAccount(null); setPanel('add-github'); }}
-              className="flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Account
-            </button>
-          </div>
-
-          {githubAccounts.length === 0 && panel !== 'add-github' && (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              <Github className="h-8 w-8 mx-auto mb-2 opacity-30" />
-              <p>No GitHub accounts connected.</p>
-              <p className="text-xs mt-1">Sync GitHub Issues as tasks using a Personal Access Token.</p>
-            </div>
-          )}
 
           {adapter && githubAccounts.map((account) => (
             <GitHubAccountRow
@@ -175,18 +167,19 @@ export function SettingsView() {
             />
           ))}
         </section>
-
-        {/* Add GitHub form (inline, new accounts only) */}
-        {panel === 'add-github' && !editingAccount && adapter && (
-          <AddGitHubAccountForm
-            key="new-github"
-            existing={null}
-            adapter={adapter}
-            repoMaps={githubRepoMaps}
-            onDone={() => { setPanel('list'); }}
-          />
-        )}
       </div>
+
+      {/* Add account modal */}
+      {panel !== null && !editingAccount && adapter && (
+        <AddAccountModal
+          type={panel === 'add-caldav' ? 'caldav' : 'github'}
+          adapter={adapter}
+          lists={lists}
+          calendarMaps={calendarMaps}
+          repoMaps={githubRepoMaps}
+          onClose={() => setPanel(null)}
+        />
+      )}
 
       {/* Edit account modal */}
       {editingAccount && adapter && (
@@ -419,6 +412,64 @@ function GitHubAccountRow({
   );
 }
 
+// ── AddAccountModal ───────────────────────────────────────────────────────────
+
+function AddAccountModal({
+  type,
+  adapter,
+  lists,
+  calendarMaps,
+  repoMaps,
+  onClose,
+}: {
+  type: 'caldav' | 'github';
+  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
+  lists: TaskList[];
+  calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
+  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
+  onClose: () => void;
+}) {
+  return (
+    <Dialog.Root open onOpenChange={(open: boolean) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
+        >
+          <Dialog.Title className="sr-only">
+            {type === 'caldav' ? 'Add CalDAV Account' : 'Add GitHub Account'}
+          </Dialog.Title>
+          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
+            <div className="p-4">
+              {type === 'caldav' ? (
+                <AddCalDavAccountForm
+                  key="new-caldav"
+                  existing={null}
+                  adapter={adapter}
+                  lists={lists}
+                  calendarMaps={calendarMaps}
+                  onDone={onClose}
+                  noBorder
+                />
+              ) : (
+                <AddGitHubAccountForm
+                  key="new-github"
+                  existing={null}
+                  adapter={adapter}
+                  repoMaps={repoMaps}
+                  onDone={onClose}
+                  noBorder
+                />
+              )}
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 // ── EditAccountModal ──────────────────────────────────────────────────────────
 
 function EditAccountModal({
@@ -437,7 +488,7 @@ function EditAccountModal({
   onClose: () => void;
 }) {
   return (
-    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog.Root open onOpenChange={(open: boolean) => { if (!open) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
         <Dialog.Content

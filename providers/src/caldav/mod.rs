@@ -125,7 +125,75 @@ impl SyncProvider for CalDavProvider {
 
         let mut pushed: Vec<PushResult> = Vec::new();
         let mut push_errors: Vec<String> = Vec::new();
+        let mut fetch_error: Option<String> = None;
 
+        // ── 1. Fetch current server state ──────────────────────────────────────
+        // Pull the full VTODO list *before* pushing so we can resolve the correct
+        // href for every UID.  Without this, tasks whose .ics filename on the
+        // server doesn't match their UID (created by another client, or moved by
+        // Nextcloud) would fail with 412 / 400 on every sync.
+        let mut remote_tasks: Vec<ProviderTask> = Vec::new();
+        let mut uid_to_href: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+
+        let fetch_hrefs: Vec<String> =
+            match ListCalendarResources::new(calendar_id).with_component("VTODO") {
+                Err(e) => {
+                    fetch_error = Some(format!("Invalid component: {e}"));
+                    vec![]
+                }
+                Ok(req) => match client.request(req).await {
+                    Err(e) => {
+                        fetch_error = Some(format!("{e}"));
+                        vec![]
+                    }
+                    Ok(r) => r.resources.iter().map(|res| res.href.clone()).collect(),
+                },
+            };
+
+        if !fetch_hrefs.is_empty() {
+            match client
+                .request(
+                    GetCalendarResources::new(calendar_id)
+                        .with_hrefs(fetch_hrefs.iter().map(|s| s.as_str())),
+                )
+                .await
+            {
+                Err(e) => {
+                    if fetch_error.is_none() {
+                        fetch_error = Some(format!("{e}"));
+                    }
+                }
+                Ok(resp) => {
+                    for resource in resp.resources {
+                        if let Ok(content) = resource.content {
+                            for vtodo in parse_vtodos(&content.data) {
+                                uid_to_href.insert(vtodo.uid.clone(), resource.href.clone());
+                                remote_tasks.push(ProviderTask {
+                                    remote_id: vtodo.uid,
+                                    title: vtodo.summary,
+                                    description: vtodo.description,
+                                    due_date: vtodo.due,
+                                    priority: vtodo.priority,
+                                    tags: vtodo.categories,
+                                    completed: vtodo.completed,
+                                    completed_at: vtodo.completed_at,
+                                    rrule: vtodo.rrule,
+                                    parent_remote_id: vtodo.related_to,
+                                    notes: vtodo.notes,
+                                    time_estimate: vtodo.time_estimate,
+                                    source_event_uid: vtodo.source_event_uid,
+                                    etag: content.etag.clone(),
+                                    href: resource.href.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 2. Push pending tasks ──────────────────────────────────────────────
         for task in &pending {
             let uid = task
                 .remote_id
@@ -150,11 +218,21 @@ impl SyncProvider for CalDavProvider {
             };
 
             let ical_data = vtodo_to_ical(&vtodo);
-            let resource_href = task.href.clone().unwrap_or_else(|| {
-                format!("{}/{}.ics", calendar_id.trim_end_matches('/'), uid)
-            });
 
-            let op = if task.etag.is_some() { "update" } else { "create" };
+            // Use the server's known href when available.  This handles resources
+            // whose filename on the server doesn't match the UID (e.g. created by
+            // another client, or reorganised by Nextcloud).
+            let uid_on_server = uid_to_href.contains_key(&uid);
+            let resource_href = uid_to_href
+                .get(&uid)
+                .cloned()
+                .unwrap_or_else(|| format!("{}/{}.ics", calendar_id.trim_end_matches('/'), uid));
+
+            let op = match (&task.etag, uid_on_server) {
+                (Some(_), true)  => "update",
+                (Some(_), false) => "re-create", // had etag but server no longer has it
+                _                => "create",
+            };
 
             let uri = match client.relative_uri(&resource_href) {
                 Ok(u) => u,
@@ -172,10 +250,17 @@ impl SyncProvider for CalDavProvider {
                     .method(Method::PUT)
                     .uri(uri)
                     .header("Content-Type", "text/calendar");
-                if let Some(etag) = &task.etag {
-                    builder = builder.header("If-Match", etag);
-                } else {
-                    builder = builder.header("If-None-Match", "*");
+                match (&task.etag, uid_on_server) {
+                    // Normal update — server still has the resource.
+                    (Some(etag), true) => builder = builder.header("If-Match", etag),
+                    // Resource was previously synced but is gone from the server,
+                    // OR this is a brand-new task.  Either way, create it fresh.
+                    (Some(_), false) | (None, false) => {
+                        builder = builder.header("If-None-Match", "*")
+                    }
+                    // UID exists on server but we have no local etag — data
+                    // inconsistency; do an unconditional overwrite.
+                    (None, true) => {}
                 }
                 match builder.body(ical_data) {
                     Ok(r) => r,
@@ -227,6 +312,7 @@ impl SyncProvider for CalDavProvider {
             }
         }
 
+        // ── 3. Deletions ───────────────────────────────────────────────────────
         let mut delete_errors: Vec<String> = Vec::new();
         for d in &deleted {
             let result = if let Some(etag) = &d.etag {
@@ -239,60 +325,7 @@ impl SyncProvider for CalDavProvider {
             }
         }
 
-        let list_req = match ListCalendarResources::new(calendar_id).with_component("VTODO") {
-            Ok(r) => r,
-            Err(e) => return Ok(SyncOutput {
-                pushed, push_errors, delete_errors, remote_tasks: vec![],
-                fetch_error: Some(format!("Invalid component: {e}")),
-            }),
-        };
-
-        let resource_list = match client.request(list_req).await {
-            Ok(r) => r,
-            Err(e) => return Ok(SyncOutput {
-                pushed, push_errors, delete_errors, remote_tasks: vec![],
-                fetch_error: Some(format!("{e}")),
-            }),
-        };
-
-        let hrefs: Vec<String> = resource_list.resources.iter().map(|r| r.href.clone()).collect();
-        let mut remote_tasks: Vec<ProviderTask> = Vec::new();
-
-        if !hrefs.is_empty() {
-            match client
-                .request(GetCalendarResources::new(calendar_id).with_hrefs(hrefs.iter().map(|s| s.as_str())))
-                .await
-            {
-                Ok(resp) => {
-                    for resource in resp.resources {
-                        if let Ok(content) = resource.content {
-                            for vtodo in parse_vtodos(&content.data) {
-                                remote_tasks.push(ProviderTask {
-                                    remote_id: vtodo.uid.clone(),
-                                    title: vtodo.summary,
-                                    description: vtodo.description,
-                                    due_date: vtodo.due,
-                                    priority: vtodo.priority,
-                                    tags: vtodo.categories,
-                                    completed: vtodo.completed,
-                                    completed_at: vtodo.completed_at,
-                                    rrule: vtodo.rrule,
-                                    parent_remote_id: vtodo.related_to,
-                                    notes: vtodo.notes,
-                                    time_estimate: vtodo.time_estimate,
-                                    source_event_uid: vtodo.source_event_uid,
-                                    etag: content.etag.clone(),
-                                    href: resource.href.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-                Err(e) => push_errors.push(format!("Fetch remote error: {e}")),
-            }
-        }
-
-        Ok(SyncOutput { pushed, push_errors, delete_errors, remote_tasks, fetch_error: None })
+        Ok(SyncOutput { pushed, push_errors, delete_errors, remote_tasks, fetch_error })
     }
 
     async fn fetch_events(

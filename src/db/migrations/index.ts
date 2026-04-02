@@ -86,7 +86,6 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
         id TEXT PRIMARY KEY,
         display_name TEXT NOT NULL,
         token TEXT NOT NULL,
-        query TEXT NOT NULL DEFAULT 'assignee:@me is:open',
         last_synced_at TEXT,
         sync_enabled INTEGER DEFAULT 1,
         created_at TEXT NOT NULL,

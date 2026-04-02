@@ -258,7 +258,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
         for (const pushed of syncResult.pushed) {
           await taskRepo.update(pushed.localId, {
             caldavUid: pushed.remoteId,
-            etag: pushed.etag,
+            etag: pushed.etag || null,  // empty string → null when server omits ETag
             syncStatus: 'synced',
           });
           justPushedUids.add(pushed.remoteId);
@@ -268,11 +268,15 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
         result.errors.push(...syncResult.pushErrors, ...syncResult.deleteErrors);
 
         for (const remote of syncResult.remoteTasks) {
+          // Skip anything we pushed in this same round — the local DB is already
+          // up to date, and the snapshot in `calendarTasks` still shows the old
+          // caldavUid = null, so without this guard we'd create a duplicate.
+          if (justPushedUids.has(remote.remoteId)) continue;
+
           const existingTask = calendarTasks.find((t) => t.caldavUid === remote.remoteId);
 
           if (existingTask) {
             if (existingTask.syncStatus === 'pending') { result.conflicts++; continue; }
-            if (justPushedUids.has(remote.remoteId)) continue;
             if (existingTask.etag && existingTask.etag === remote.etag) continue;
 
             const updates: Partial<Task> = {
