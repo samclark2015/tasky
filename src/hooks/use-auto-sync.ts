@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { DatabaseAdapter } from '@/db/repository';
 import { useTaskStore, useListStore, useSyncStore, useUIStore } from '@/stores';
+import type { Task } from '@/types';
 
 const DEBOUNCE_DELAY_MS = 30_000; // 30 seconds after a task becomes pending
 
@@ -8,8 +9,12 @@ const DEBOUNCE_DELAY_MS = 30_000; // 30 seconds after a task becomes pending
  * Manages two automatic sync triggers:
  *
  * 1. Periodic sync — fires every `syncIntervalMinutes` minutes (if configured).
- * 2. Debounced sync — fires DEBOUNCE_DELAY_MS after the pending-task count
- *    increases (i.e. after the user creates or edits a task).
+ *    Calls `syncAll` to refresh every connected account.
+ *
+ * 2. Debounced sync — fires DEBOUNCE_DELAY_MS after the pending-task set grows.
+ *    Calls `syncPending` with only the list IDs that have pending tasks, so only
+ *    the affected CalDAV / GitHub accounts are contacted. Local-only pending
+ *    tasks (Inbox or unmapped lists) are silently skipped.
  *
  * Both triggers are no-ops when `isSyncing` is already true.
  * Must be called after the app is `ready` (adapter is non-null).
@@ -22,7 +27,7 @@ export function useAutoSync(adapter: DatabaseAdapter) {
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Helper: trigger a full sync ──────────────────────────────────────────
+  // ── Helper: full sync (used by periodic trigger) ─────────────────────────
   function triggerSync() {
     const { isSyncing, syncAll } = useSyncStore.getState();
     if (isSyncing) return;
@@ -33,6 +38,31 @@ export function useAutoSync(adapter: DatabaseAdapter) {
 
     syncAll(
       adp,
+      Array.from(tasks.values()),
+      lists,
+      () => useTaskStore.getState().loadTasks(adp),
+      () => useListStore.getState().loadLists(adp),
+    );
+  }
+
+  // ── Helper: targeted sync for only the affected accounts ─────────────────
+  function triggerSyncPending() {
+    const { isSyncing, syncPending } = useSyncStore.getState();
+    if (isSyncing) return;
+
+    const { tasks } = useTaskStore.getState();
+    const { lists } = useListStore.getState();
+    const adp = adapterRef.current;
+
+    const pendingListIds = new Set<string | null>();
+    for (const t of tasks.values()) {
+      if (t.syncStatus === 'pending') pendingListIds.add(t.listId);
+    }
+    if (pendingListIds.size === 0) return;
+
+    syncPending(
+      adp,
+      pendingListIds,
       Array.from(tasks.values()),
       lists,
       () => useTaskStore.getState().loadTasks(adp),
@@ -72,35 +102,40 @@ export function useAutoSync(adapter: DatabaseAdapter) {
 
   // ── Debounced sync on pending-task increase ──────────────────────────────
   useEffect(() => {
-    function countPending(tasks: Map<string, import('@/types').Task>) {
-      let n = 0;
+    /** Returns the set of listIds that have at least one pending task. */
+    function getPendingListIds(tasks: Map<string, Task>): Set<string | null> {
+      const ids = new Set<string | null>();
       for (const t of tasks.values()) {
-        if (t.syncStatus === 'pending') n++;
+        if (t.syncStatus === 'pending') ids.add(t.listId);
       }
-      return n;
+      return ids;
     }
 
     const unsub = useTaskStore.subscribe(
-      (state) => countPending(state.tasks),
-      (count, prevCount) => {
-        // Only react when pending count increases (new/edited tasks).
-        if (count <= prevCount) return;
+      (state) => getPendingListIds(state.tasks),
+      (ids, prev) => {
+        // Only react when the pending set grows (new list IDs appeared).
+        if (ids.size <= prev.size) return;
 
         // Cancel any existing debounce timer and restart.
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
         debounceTimer.current = setTimeout(() => {
           debounceTimer.current = null;
-          triggerSync();
+          triggerSyncPending();
         }, DEBOUNCE_DELAY_MS);
+      },
+      {
+        // Custom equality: two sets are equal when they have the same IDs.
+        equalityFn: (a, b) => a.size === b.size && [...a].every((id) => b.has(id)),
       },
     );
 
     // On mount: if there are already pending tasks, schedule an initial sync.
-    const initialPending = countPending(useTaskStore.getState().tasks);
-    if (initialPending > 0) {
+    const initial = getPendingListIds(useTaskStore.getState().tasks);
+    if (initial.size > 0) {
       debounceTimer.current = setTimeout(() => {
         debounceTimer.current = null;
-        triggerSync();
+        triggerSyncPending();
       }, DEBOUNCE_DELAY_MS);
     }
 

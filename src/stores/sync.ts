@@ -96,6 +96,14 @@ interface SyncStore {
     onTasksChanged: () => Promise<void>,
     onListsChanged: () => Promise<void>,
   ) => Promise<void>;
+  syncPending: (
+    adapter: DatabaseAdapter,
+    pendingListIds: Set<string | null>,
+    tasks: Task[],
+    lists: TaskList[],
+    onTasksChanged: () => Promise<void>,
+    onListsChanged: () => Promise<void>,
+  ) => Promise<void>;
 }
 
 export const useSyncStore = create<SyncStore>()((set, get) => ({
@@ -574,6 +582,56 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     }
 
     for (const account of githubAccounts.filter((a) => a.syncEnabled)) {
+      try {
+        const result = await get().syncGitHubAccount(adapter, account.id, tasks, onTasksChanged);
+        errors.push(...result.errors);
+      } catch (e) {
+        errors.push(`GitHub ${account.displayName}: ${String(e)}`);
+      }
+    }
+
+    const now = new Date().toISOString();
+    set({
+      isSyncing: false,
+      syncStatus: errors.length > 0 ? 'error' : 'success',
+      lastSyncError: errors.length > 0 ? errors.join('; ') : null,
+      lastSyncAt: now,
+    });
+
+    await get().loadAccounts(adapter);
+  },
+
+  async syncPending(adapter, pendingListIds, tasks, lists, onTasksChanged, onListsChanged) {
+    const { accounts, githubAccounts, calendarMaps, githubRepoMaps, isSyncing } = get();
+    if (isSyncing) return;
+
+    // Resolve which accounts are touched by the pending list IDs.
+    const caldavAccountIds = new Set<string>();
+    const githubAccountIds = new Set<string>();
+    for (const listId of pendingListIds) {
+      if (!listId) continue; // Inbox tasks are local-only
+      const calMap = calendarMaps.find((m) => m.listId === listId);
+      if (calMap) caldavAccountIds.add(calMap.accountId);
+      const ghMap = githubRepoMaps.find((m) => m.listId === listId);
+      if (ghMap) githubAccountIds.add(ghMap.accountId);
+    }
+
+    // Nothing to push — all pending tasks are local-only.
+    if (caldavAccountIds.size === 0 && githubAccountIds.size === 0) return;
+
+    set({ isSyncing: true, syncStatus: 'syncing', lastSyncError: null });
+    const errors: string[] = [];
+
+    for (const account of accounts.filter((a) => a.syncEnabled && caldavAccountIds.has(a.id))) {
+      try {
+        const result = await get().syncAccount(adapter, account.id, tasks, lists, onTasksChanged, onListsChanged);
+        errors.push(...result.errors);
+      } catch (e) {
+        errors.push(`CalDAV ${account.displayName}: ${String(e)}`);
+      }
+    }
+
+    for (const account of githubAccounts.filter((a) => a.syncEnabled && githubAccountIds.has(a.id))) {
       try {
         const result = await get().syncGitHubAccount(adapter, account.id, tasks, onTasksChanged);
         errors.push(...result.errors);
