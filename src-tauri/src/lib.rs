@@ -65,7 +65,10 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             use tauri::menu::{CheckMenuItem, Submenu};
 
             let light  = CheckMenuItem::with_id(app, "theme_light",  "Light",  true, false, None::<&str>)?;

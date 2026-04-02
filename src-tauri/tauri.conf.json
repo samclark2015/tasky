@@ -31,6 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,6 +43,12 @@
   "plugins": {
     "sql": {
       "preload": ["sqlite:tasky.db"]
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhGMkMxNzczQzczMDFFRDEKUldUUkhqREhjeGNzajRyREd4RVNudXhPblR2L1pTZjRqKzZQNGtlbS95SC93ZldMTXc4YlY4Q2sK",
+      "endpoints": [
+        "https://github.com/samclark2015/tasky/releases/latest/download/latest.json"
+      ]
     }
   }
 }

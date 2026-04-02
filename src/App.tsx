@@ -3,6 +3,7 @@ import { useUIStore, type ViewType } from '@/stores';
 import { useTheme } from '@/components/theme-provider';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { check, type Update } from '@tauri-apps/plugin-updater';
 import { AppShell } from '@/components/layout';
 import { TodayView } from '@/views/today';
 import { InboxView } from '@/views/inbox';
@@ -12,6 +13,7 @@ import { ListView } from '@/views/list';
 import { SearchView } from '@/views/search';
 import { SettingsView } from '@/views/settings';
 import { TaskModal } from '@/components/modals/task-modal';
+import { UpdateModal } from '@/components/modals/update-modal';
 
 function ViewRouter({ view }: { view: ViewType }) {
   switch (view) {
@@ -30,6 +32,18 @@ export function App() {
   const { currentView, navigateTo, selectTask, setSearchQuery } = useUIStore();
   const { theme, setTheme } = useTheme();
   const [showNewTask, setShowNewTask] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
+
+  // Check for updates on startup
+  useEffect(() => {
+    check()
+      .then((update) => {
+        if (update) setPendingUpdate(update);
+      })
+      .catch((err) => {
+        console.error('Update check failed:', err);
+      });
+  }, []);
 
   useEffect(() => {
     invoke('sync_theme', { theme });
@@ -81,6 +95,10 @@ export function App() {
 
       {showNewTask && (
         <TaskModal onClose={() => setShowNewTask(false)} />
+      )}
+
+      {pendingUpdate && (
+        <UpdateModal update={pendingUpdate} onClose={() => setPendingUpdate(null)} />
       )}
     </>
   );
