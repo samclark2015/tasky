@@ -15,8 +15,8 @@ out/
 vite.config.d.ts
 vite.config.js
 
-# Tauri
-apps/desktop/src-tauri/target/
+# Tauri / Cargo
+target/
 apps/desktop/src-tauri/gen/android/
 apps/desktop/src-tauri/gen/apple/
 

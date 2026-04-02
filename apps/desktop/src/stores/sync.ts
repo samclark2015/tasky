@@ -1,9 +1,7 @@
 import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
 import type {
   CalDavAccount,
   CalDavCalendarMap,
-  DiscoveredCalendar,
   SyncResult,
   Task,
   TaskList,
@@ -15,8 +13,17 @@ import {
   createTaskRepository,
 } from '@db/repository';
 import { generateId } from '@/lib/utils';
+import {
+  providerTestConnection,
+  providerDiscoverCalendars,
+  providerSync,
+} from '@/providers/ipc';
+import type { ProviderCalendar, TaskPushInput } from '@/providers/types';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'success';
+
+// Re-export so the settings view can import this type from one place.
+export type { ProviderCalendar as DiscoveredCalendar };
 
 interface SyncStore {
   accounts: CalDavAccount[];
@@ -27,11 +34,14 @@ interface SyncStore {
   isSyncing: boolean;
 
   loadAccounts: (adapter: DatabaseAdapter) => Promise<void>;
-  addAccount: (adapter: DatabaseAdapter, account: Omit<CalDavAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>) => Promise<CalDavAccount>;
+  addAccount: (
+    adapter: DatabaseAdapter,
+    account: Omit<CalDavAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>
+  ) => Promise<CalDavAccount>;
   updateAccount: (adapter: DatabaseAdapter, id: string, updates: Partial<CalDavAccount>) => Promise<void>;
   deleteAccount: (adapter: DatabaseAdapter, id: string) => Promise<void>;
   testConnection: (serverUrl: string, username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  discoverCalendars: (serverUrl: string, username: string, password: string) => Promise<DiscoveredCalendar[]>;
+  discoverCalendars: (serverUrl: string, username: string, password: string) => Promise<ProviderCalendar[]>;
   linkCalendar: (adapter: DatabaseAdapter, accountId: string, calendarHref: string, list: TaskList) => Promise<void>;
   unlinkCalendar: (adapter: DatabaseAdapter, listId: string) => Promise<void>;
   syncAccount: (
@@ -109,23 +119,11 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
   },
 
   async testConnection(serverUrl, username, password) {
-    try {
-      const result = await invoke<{ ok: boolean; principal: string | null; error: string | null }>(
-        'caldav_test_connection',
-        { serverUrl, username, password }
-      );
-      return { ok: result.ok, error: result.error ?? undefined };
-    } catch (e) {
-      return { ok: false, error: String(e) };
-    }
+    return providerTestConnection('caldav', { serverUrl, username, password });
   },
 
   async discoverCalendars(serverUrl, username, password) {
-    const result = await invoke<{ calendars: DiscoveredCalendar[]; error: string | null }>(
-      'caldav_discover_calendars',
-      { serverUrl, username, password }
-    );
-    return result.calendars;
+    return providerDiscoverCalendars('caldav', { serverUrl, username, password });
   },
 
   async linkCalendar(adapter, accountId, calendarHref, list) {
@@ -165,6 +163,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     const maps = get().calendarMaps.filter((m) => m.accountId === accountId);
     const taskRepo = createTaskRepository(adapter);
     const accountRepo = createAccountRepository(adapter);
+    const config = { serverUrl: account.serverUrl, username: account.username, password: account.password };
 
     const result: SyncResult = {
       accountId,
@@ -177,163 +176,100 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
 
     for (const map of maps) {
       const calendarTasks = tasks.filter((t) => t.listId === map.listId);
-
       const pendingTasks = calendarTasks.filter(
         (t) => t.syncStatus === 'pending' && t.parentId === null
       );
 
-      const pendingTasksInput = pendingTasks.map((t) => ({
-        id: t.id,
-        list_id: t.listId,
-        parent_id: t.parentId,
+      const pushInputs: TaskPushInput[] = pendingTasks.map((t) => ({
+        localId: t.id,
+        remoteId: t.caldavUid ?? null,
         title: t.title,
         description: t.description,
-        due_date: t.dueDate,
+        dueDate: t.dueDate,
         priority: t.priority,
         tags: t.tags,
-        recurrence_rrule: t.recurrence
-          ? rruleToString(t.recurrence)
-          : null,
+        rrule: t.recurrence ? rruleToString(t.recurrence) : null,
         completed: t.completed,
-        completed_at: t.completedAt,
+        completedAt: t.completedAt,
         notes: t.notes,
-        time_estimate: t.timeEstimate,
+        timeEstimate: t.timeEstimate,
         etag: t.etag,
-        caldav_uid: t.caldavUid,
-        sync_status: t.syncStatus,
-        updated_at: t.updatedAt,
-        source_event_uid: t.sourceEventUid,
+        href: null,
+        parentRemoteId: t.parentId,
+        sourceEventUid: t.sourceEventUid,
       }));
 
       try {
-        const syncResult = await invoke<{
-          pushed: Array<{ id: string; caldav_uid: string; etag: string; href: string }>;
-          push_errors: string[];
-          delete_errors: string[];
-          remote_tasks: Array<{
-            href: string;
-            etag: string;
-            vtodo: {
-              uid: string;
-              summary: string;
-              description: string | null;
-              due: string | null;
-              priority: number | null;
-              categories: string[];
-              status: string | null;
-              completed: boolean;
-              completed_at: string | null;
-              rrule: string | null;
-              related_to: string | null;
-              notes: string | null;
-              time_estimate: number | null;
-              source_event_uid: string | null;
-            };
-          }>;
-          fetch_error?: string;
-        }>('caldav_sync_account', {
-          serverUrl: account.serverUrl,
-          username: account.username,
-          password: account.password,
-          calendarHref: map.calendarHref,
-          pendingTasks: pendingTasksInput,
-          deletedHrefs: [],
-        });
+        const syncResult = await providerSync('caldav', config, map.calendarHref, pushInputs, []);
 
-        // Track which local task IDs were just pushed so we don't overwrite them
-        // with the remote echo returned in the same sync round-trip.
         const justPushedUids = new Set<string>();
 
         for (const pushed of syncResult.pushed) {
-          await taskRepo.update(pushed.id, {
-            caldavUid: pushed.caldav_uid,
+          await taskRepo.update(pushed.localId, {
+            caldavUid: pushed.remoteId,
             etag: pushed.etag,
             syncStatus: 'synced',
           });
-          justPushedUids.add(pushed.caldav_uid);
+          justPushedUids.add(pushed.remoteId);
           result.updated++;
         }
 
-        result.errors.push(...syncResult.push_errors, ...syncResult.delete_errors);
+        result.errors.push(...syncResult.pushErrors, ...syncResult.deleteErrors);
 
-        // Apply remote changes. Local always wins when there are pending edits.
-        for (const remote of syncResult.remote_tasks) {
-          const { vtodo } = remote;
-          const existingTask = calendarTasks.find(
-            (t) => t.caldavUid === vtodo.uid
-          );
+        for (const remote of syncResult.remoteTasks) {
+          const existingTask = calendarTasks.find((t) => t.caldavUid === remote.remoteId);
 
           if (existingTask) {
-            // Local has unpushed edits — skip; we own this version.
-            if (existingTask.syncStatus === 'pending') {
-              result.conflicts++;
-              continue;
-            }
-
-            // We just pushed this task in this very sync run — skip the echo.
-            if (justPushedUids.has(vtodo.uid)) {
-              continue;
-            }
-
-            // Remote ETag matches what we already have — nothing changed.
-            if (existingTask.etag && existingTask.etag === remote.etag) {
-              continue;
-            }
+            if (existingTask.syncStatus === 'pending') { result.conflicts++; continue; }
+            if (justPushedUids.has(remote.remoteId)) continue;
+            if (existingTask.etag && existingTask.etag === remote.etag) continue;
 
             const updates: Partial<Task> = {
-              title: vtodo.summary,
-              description: vtodo.description ?? '',
-              dueDate: vtodo.due ?? null,
-              priority: priorityNumToStr(vtodo.priority),
-              tags: vtodo.categories,
-              completed: vtodo.completed,
-              completedAt: vtodo.completed_at ?? null,
-              notes: vtodo.notes ?? '',
-              timeEstimate: vtodo.time_estimate ?? null,
+              title: remote.title,
+              description: remote.description ?? '',
+              dueDate: remote.dueDate ?? null,
+              priority: priorityNumToStr(remote.priority),
+              tags: remote.tags,
+              completed: remote.completed,
+              completedAt: remote.completedAt ?? null,
+              notes: remote.notes ?? '',
+              timeEstimate: remote.timeEstimate ?? null,
               etag: remote.etag,
               syncStatus: 'synced',
             };
-
-            if (vtodo.rrule) {
-              updates.recurrence = parseRRule(vtodo.rrule);
-            }
-
+            if (remote.rrule) updates.recurrence = parseRRule(remote.rrule);
             await taskRepo.update(existingTask.id, updates);
             result.updated++;
           } else {
-            // New remote task
             const now = new Date().toISOString();
-            const newId = generateId();
             const newTask: Task = {
-              id: newId,
+              id: generateId(),
               listId: map.listId,
               parentId: null,
-              title: vtodo.summary,
-              description: vtodo.description ?? '',
-              dueDate: vtodo.due ?? null,
-              priority: priorityNumToStr(vtodo.priority),
-              tags: vtodo.categories,
-              recurrence: vtodo.rrule ? parseRRule(vtodo.rrule) : null,
-              completed: vtodo.completed,
-              completedAt: vtodo.completed_at ?? null,
+              title: remote.title,
+              description: remote.description ?? '',
+              dueDate: remote.dueDate ?? null,
+              priority: priorityNumToStr(remote.priority),
+              tags: remote.tags,
+              recurrence: remote.rrule ? parseRRule(remote.rrule) : null,
+              completed: remote.completed,
+              completedAt: remote.completedAt ?? null,
               createdAt: now,
               updatedAt: now,
-              timeEstimate: vtodo.time_estimate ?? null,
+              timeEstimate: remote.timeEstimate ?? null,
               timeSpent: 0,
-              notes: vtodo.notes ?? '',
+              notes: remote.notes ?? '',
               etag: remote.etag,
-              caldavUid: vtodo.uid,
+              caldavUid: remote.remoteId,
               syncStatus: 'synced',
-              sourceEventUid: vtodo.source_event_uid ?? null,
+              sourceEventUid: remote.sourceEventUid ?? null,
             };
             await taskRepo.create(newTask);
             result.created++;
           }
         }
 
-        if (syncResult.fetch_error) {
-          result.errors.push(syncResult.fetch_error);
-        }
+        if (syncResult.fetchError) result.errors.push(syncResult.fetchError);
       } catch (e) {
         result.errors.push(`Calendar ${map.calendarHref}: ${String(e)}`);
       }
@@ -341,7 +277,6 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
 
     await accountRepo.setLastSynced(accountId, new Date().toISOString());
     await onTasksChanged();
-
     return result;
   },
 
@@ -350,19 +285,11 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     if (isSyncing) return;
 
     set({ isSyncing: true, syncStatus: 'syncing', lastSyncError: null });
-
     const errors: string[] = [];
 
     for (const account of accounts.filter((a) => a.syncEnabled)) {
       try {
-        const result = await get().syncAccount(
-          adapter,
-          account.id,
-          tasks,
-          lists,
-          onTasksChanged,
-          onListsChanged
-        );
+        const result = await get().syncAccount(adapter, account.id, tasks, lists, onTasksChanged, onListsChanged);
         errors.push(...result.errors);
       } catch (e) {
         errors.push(`Account ${account.displayName}: ${String(e)}`);
@@ -401,14 +328,10 @@ function rruleToString(r: Task['recurrence']): string | null {
 
 function parseRRule(rrule: string): Task['recurrence'] {
   const parts = Object.fromEntries(
-    rrule.split(';').map((p) => {
-      const [k, v] = p.split('=');
-      return [k, v];
-    })
+    rrule.split(';').map((p) => { const [k, v] = p.split('='); return [k, v]; })
   );
-
-  const freq = (parts['FREQ'] ?? 'daily').toLowerCase() as Task['recurrence'] extends null ? never : NonNullable<Task['recurrence']>['freq'];
-
+  const freq = (parts['FREQ'] ?? 'daily').toLowerCase() as Task['recurrence'] extends null
+    ? never : NonNullable<Task['recurrence']>['freq'];
   return {
     freq,
     interval: parts['INTERVAL'] ? Number(parts['INTERVAL']) : undefined,

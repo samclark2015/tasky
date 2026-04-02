@@ -1,0 +1,212 @@
+// Generic IPC bridge between the TS app and Rust provider implementations.
+//
+// All provider logic lives in Rust. This file contains one function per
+// operation, each of which calls the Rust command named
+// `{providerId}_{operation}` (e.g. "caldav_sync_account").
+//
+// Adding a new provider requires only a Rust implementation — no new TS
+// code is needed here.
+
+import { invoke } from '@tauri-apps/api/core';
+import type {
+  ProviderCalendar,
+  ProviderEvent,
+  ProviderTask,
+  PushResult,
+  SyncOutput,
+  TaskDeleteInput,
+  TaskPushInput,
+} from './types';
+
+// ── Wire types (Rust uses snake_case) ────────────────────────────────────────
+
+interface WireProviderCalendar {
+  id: string;
+  display_name: string | null;
+  color: string | null;
+  supports_sync: boolean;
+}
+
+interface WireProviderEvent {
+  remote_id: string;
+  calendar_id: string;
+  title: string;
+  description: string | null;
+  start: string | null;
+  end: string | null;
+  location: string | null;
+  color: string | null;
+}
+
+interface WireProviderTask {
+  remote_id: string;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  priority: number | null;
+  tags: string[];
+  completed: boolean;
+  completed_at: string | null;
+  rrule: string | null;
+  parent_remote_id: string | null;
+  notes: string | null;
+  time_estimate: number | null;
+  source_event_uid: string | null;
+  etag: string;
+  href: string;
+}
+
+interface WirePushResult {
+  local_id: string;
+  remote_id: string;
+  etag: string;
+  href: string;
+}
+
+interface WireSyncOutput {
+  pushed: WirePushResult[];
+  push_errors: string[];
+  delete_errors: string[];
+  remote_tasks: WireProviderTask[];
+  fetch_error: string | null;
+}
+
+// ── Deserialisers ─────────────────────────────────────────────────────────────
+
+function fromWireCalendar(w: WireProviderCalendar): ProviderCalendar {
+  return { id: w.id, displayName: w.display_name, color: w.color, supportsSync: w.supports_sync };
+}
+
+function fromWireEvent(w: WireProviderEvent): ProviderEvent {
+  return {
+    remoteId: w.remote_id,
+    calendarId: w.calendar_id,
+    title: w.title,
+    description: w.description,
+    start: w.start,
+    end: w.end,
+    location: w.location,
+    color: w.color,
+  };
+}
+
+function fromWireTask(w: WireProviderTask): ProviderTask {
+  return {
+    remoteId: w.remote_id,
+    title: w.title,
+    description: w.description,
+    dueDate: w.due_date,
+    priority: w.priority,
+    tags: w.tags,
+    completed: w.completed,
+    completedAt: w.completed_at,
+    rrule: w.rrule,
+    parentRemoteId: w.parent_remote_id,
+    notes: w.notes,
+    timeEstimate: w.time_estimate,
+    sourceEventUid: w.source_event_uid,
+    etag: w.etag,
+    href: w.href,
+  };
+}
+
+function fromWireSyncOutput(w: WireSyncOutput): SyncOutput {
+  return {
+    pushed: w.pushed.map((p): PushResult => ({
+      localId: p.local_id,
+      remoteId: p.remote_id,
+      etag: p.etag,
+      href: p.href,
+    })),
+    pushErrors: w.push_errors,
+    deleteErrors: w.delete_errors,
+    remoteTasks: w.remote_tasks.map(fromWireTask),
+    fetchError: w.fetch_error,
+  };
+}
+
+// ── Serialisers ───────────────────────────────────────────────────────────────
+
+function toWirePushInput(t: TaskPushInput) {
+  return {
+    local_id: t.localId,
+    remote_id: t.remoteId,
+    title: t.title,
+    description: t.description,
+    due_date: t.dueDate,
+    priority: t.priority,
+    tags: t.tags,
+    rrule: t.rrule,
+    completed: t.completed,
+    completed_at: t.completedAt,
+    notes: t.notes,
+    time_estimate: t.timeEstimate,
+    etag: t.etag,
+    href: t.href,
+    parent_remote_id: t.parentRemoteId,
+    source_event_uid: t.sourceEventUid,
+  };
+}
+
+// ── Generic IPC operations ────────────────────────────────────────────────────
+
+export async function providerTestConnection(
+  providerId: string,
+  config: Record<string, string>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const result = await invoke<{ ok: boolean; principal: string | null; error: string | null }>(
+      `${providerId}_test_connection`,
+      config,
+    );
+    return { ok: result.ok, error: result.error ?? undefined };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+export async function providerDiscoverCalendars(
+  providerId: string,
+  config: Record<string, string>,
+): Promise<ProviderCalendar[]> {
+  const result = await invoke<{ calendars: WireProviderCalendar[]; error: string | null }>(
+    `${providerId}_discover_calendars`,
+    config,
+  );
+  return result.calendars.map(fromWireCalendar);
+}
+
+export async function providerSync(
+  providerId: string,
+  config: Record<string, string>,
+  calendarId: string,
+  pending: TaskPushInput[],
+  deleted: TaskDeleteInput[],
+): Promise<SyncOutput> {
+  const result = await invoke<WireSyncOutput>(`${providerId}_sync_account`, {
+    ...config,
+    calendar_href: calendarId,
+    pending_tasks: pending.map(toWirePushInput),
+    deleted_hrefs: deleted.map((d) => ({ href: d.href, etag: d.etag })),
+  });
+  return fromWireSyncOutput(result);
+}
+
+export async function providerFetchEvents(
+  providerId: string,
+  config: Record<string, string>,
+  calendarId: string,
+  rangeStart: string,
+  rangeEnd: string,
+): Promise<ProviderEvent[]> {
+  const result = await invoke<{ events: WireProviderEvent[]; error: string | null }>(
+    `${providerId}_fetch_events`,
+    {
+      ...config,
+      calendar_href: calendarId,
+      range_start: rangeStart,
+      range_end: rangeEnd,
+    },
+  );
+  return result.events.map(fromWireEvent);
+}

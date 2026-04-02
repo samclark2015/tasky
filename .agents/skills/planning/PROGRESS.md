@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** Phase 4 – CalDAV Sync (completed) → moving to Phase 5  
+**Phase:** Phase 5 – Polish & Notifications  
 **Last Updated:** April 1, 2026
 
 ## Phase Completion
@@ -148,3 +148,15 @@ None currently.
   - VEvent struct in ical.rs parses: UID, SUMMARY, DESCRIPTION, DTSTART, DTEND, LOCATION, COLOR
   - CalendarEvent type in @tasky/core includes all VEVENT fields plus calendarHref for keying
   - Per-calendar visibility toggles deferred (low priority; all enabled calendars show events by default)
+
+### Provider Refactor (post-Phase 4)
+- **Architecture**: Provider logic lives in a standalone Rust crate `packages/providers` (`tasky-providers`), fully decoupled from the Tauri app crate
+- `packages/providers/src/lib.rs` — `SyncProvider` trait + canonical types (`ProviderTask`, `ProviderEvent`, `ProviderCalendar`, `SyncOutput`, etc.)
+- `packages/providers/src/caldav/mod.rs` — `CalDavProvider` implementing `SyncProvider`; no Tauri dependency
+- `packages/providers/src/caldav/ical.rs` — iCalendar VTODO/VEVENT parse + generate
+- `apps/desktop/src-tauri/src/providers/caldav/mod.rs` — thin `#[tauri::command]` wrappers only; imports from `tasky_providers`
+- `apps/desktop/src/providers/ipc.ts` — generic TS IPC bridge (4 functions, parameterised by provider ID string); no per-provider TS code ever needed
+- `apps/desktop/src/providers/types.ts` — canonical TS types mirroring Rust structs
+- `stores/sync.ts` and `stores/events.ts` call the generic IPC bridge with `'caldav'` as provider ID
+- **Cargo workspace**: root `Cargo.toml` declares both `apps/desktop/src-tauri` and `packages/providers` as workspace members
+- **To add a new provider** (e.g. Google Calendar, GitHub Issues): add a new Rust crate or module under `packages/providers/src/<name>/`, implement `SyncProvider`, add `#[tauri::command]` wrappers in `apps/desktop/src-tauri/src/providers/<name>/mod.rs`, register in `lib.rs` — zero TS changes required

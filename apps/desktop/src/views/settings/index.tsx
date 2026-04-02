@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { ViewHeader } from '@/components/layout/view-header';
 import { useApp } from '@/components/app-provider';
 import { useTaskStore, useListStore, useSyncStore } from '@/stores';
-import type { CalDavAccount, DiscoveredCalendar, TaskList } from '@tasky/core';
+import type { CalDavAccount, TaskList } from '@tasky/core';
+import type { ProviderCalendar } from '@/providers/types';
 import {
   Wifi,
   WifiOff,
@@ -228,7 +229,7 @@ function AddAccountForm({
   const [testError, setTestError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [discovering, setDiscovering] = useState(false);
-  const [discovered, setDiscovered] = useState<DiscoveredCalendar[]>([]);
+  const [discovered, setDiscovered] = useState<ProviderCalendar[]>([]);
   const [savedAccountId, setSavedAccountId] = useState<string | null>(existing?.id ?? null);
 
   async function handleTest() {
@@ -261,22 +262,22 @@ function AddAccountForm({
     }
   }
 
-  async function handleLinkToggle(cal: DiscoveredCalendar) {
+  async function handleLinkToggle(cal: ProviderCalendar) {
     if (!savedAccountId) return;
     const existing = calendarMaps.find(
-      (m) => m.accountId === savedAccountId && m.calendarHref === cal.href
+      (m) => m.accountId === savedAccountId && m.calendarHref === cal.id
     );
     if (existing) {
       await unlinkCalendar(adapter, existing.listId);
     } else {
-      let list = lists.find((l) => l.caldavUrl === cal.href);
+      let list = lists.find((l) => l.caldavUrl === cal.id);
       if (!list) {
-        const name = cal.displayName ?? cal.href.split('/').filter(Boolean).pop() ?? 'Calendar';
+        const name = cal.displayName ?? cal.id.split('/').filter(Boolean).pop() ?? 'Calendar';
         list = await createList(adapter, name, cal.color ?? undefined);
-        await useListStore.getState().updateList(adapter, list.id, { caldavUrl: cal.href });
-        list = { ...list, caldavUrl: cal.href };
+        await useListStore.getState().updateList(adapter, list.id, { caldavUrl: cal.id });
+        list = { ...list, caldavUrl: cal.id };
       }
-      await linkCalendar(adapter, savedAccountId, cal.href, list);
+      await linkCalendar(adapter, savedAccountId, cal.id, list);
     }
   }
 
@@ -376,15 +377,15 @@ function AddAccountForm({
             )}
             {!discovering && discovered.map((cal) => {
               const isLinked = savedAccountId
-                ? calendarMaps.some((m) => m.accountId === savedAccountId && m.calendarHref === cal.href)
+                ? calendarMaps.some((m) => m.accountId === savedAccountId && m.calendarHref === cal.id)
                 : false;
-              const calName = cal.displayName ?? cal.href.split('/').filter(Boolean).pop() ?? 'Calendar';
+              const calName = cal.displayName ?? cal.id.split('/').filter(Boolean).pop() ?? 'Calendar';
 
               return (
-                <div key={cal.href} className="flex items-center gap-2 py-1.5 border-b border-border last:border-0">
+                <div key={cal.id} className="flex items-center gap-2 py-1.5 border-b border-border last:border-0">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm truncate">{calName}</p>
-                    <p className="text-xs text-muted-foreground truncate">{cal.href}</p>
+                    <p className="text-xs text-muted-foreground truncate">{cal.id}</p>
                   </div>
                   <button
                     onClick={() => handleLinkToggle(cal)}

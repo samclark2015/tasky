@@ -1,26 +1,9 @@
 [package]
-name = "tasky"
+name = "tasky-providers"
 version = "0.0.1"
-description = "Tasky - Task Manager"
-authors = ["Tasky"]
 edition = "2021"
-rust-version = "1.70"
-
-[lib]
-name = "tasky_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
-[[bin]]
-name = "tasky"
-path = "src/main.rs"
-
-[build-dependencies]
-tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.0", features = [] }
-tauri-plugin-sql = { version = "2.0", features = ["sqlite"] }
-tauri-plugin-notification = { version = "2.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -34,7 +17,3 @@ tower-http = { version = "0.6", features = ["auth"] }
 http = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
-tasky-providers = { path = "../../../packages/providers" }
-
-[features]
-custom-protocol = ["tauri/custom-protocol"]

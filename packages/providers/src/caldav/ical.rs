@@ -1,6 +1,8 @@
 use icalendar::{Calendar, CalendarComponent, Component, Event, EventLike, Todo, TodoStatus};
 use serde::{Deserialize, Serialize};
 
+// Internal iCalendar types — only used within the caldav provider.
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VTodo {
     pub uid: String,
@@ -49,7 +51,6 @@ pub fn parse_vtodos(ical_text: &str) -> Vec<VTodo> {
 fn todo_to_vtodo(todo: &Todo) -> Option<VTodo> {
     let uid = todo.get_uid()?.to_string();
     let summary = todo.get_summary().unwrap_or("").to_string();
-
     let description = todo.get_description().map(|s| s.to_string());
 
     let due = todo.get_due().map(|dt| {
@@ -136,21 +137,17 @@ pub fn vtodo_to_ical(vtodo: &VTodo) -> String {
     if let Some(desc) = &vtodo.description {
         todo.description(desc);
     }
-
     if let Some(p) = vtodo.priority {
         todo.priority(p);
     }
-
     if !vtodo.categories.is_empty() {
         todo.add_property("CATEGORIES", &vtodo.categories.join(","));
     }
-
     if vtodo.completed {
         todo.status(TodoStatus::Completed);
     } else {
         todo.status(TodoStatus::NeedsAction);
     }
-
     if let Some(due) = &vtodo.due {
         if due.contains('T') {
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(due) {
@@ -164,27 +161,21 @@ pub fn vtodo_to_ical(vtodo: &VTodo) -> String {
             todo.add_property("DUE", due);
         }
     }
-
     if let Some(ca) = &vtodo.completed_at {
         todo.add_property("COMPLETED", ca);
     }
-
     if let Some(rrule) = &vtodo.rrule {
         todo.add_property("RRULE", rrule);
     }
-
     if let Some(rt) = &vtodo.related_to {
         todo.add_property("RELATED-TO", rt);
     }
-
     if let Some(notes) = &vtodo.notes {
         todo.add_property("X-TASKY-NOTES", notes);
     }
-
     if let Some(te) = vtodo.time_estimate {
         todo.add_property("X-TASKY-TIME-ESTIMATE", &te.to_string());
     }
-
     if let Some(seu) = &vtodo.source_event_uid {
         todo.add_property("X-TASKY-SOURCE-EVENT-UID", seu);
     }
@@ -212,7 +203,6 @@ pub fn parse_vevents(ical_text: &str) -> Vec<VEvent> {
 fn event_to_vevent(event: &Event) -> Option<VEvent> {
     let uid = event.get_uid()?.to_string();
     let summary = event.get_summary().unwrap_or("").to_string();
-
     let description = event.get_description().map(|s| s.to_string());
     let location = event.get_location().map(|s| s.to_string());
     let color = event.property_value("COLOR").map(|s| s.to_string());

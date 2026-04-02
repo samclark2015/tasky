@@ -1,8 +1,8 @@
-mod caldav;
+mod providers;
 
 use std::sync::Mutex;
 use tauri::{Runtime, menu::CheckMenuItem};
-use caldav::{caldav_discover_calendars, caldav_fetch_events, caldav_sync_account, caldav_test_connection};
+use providers::caldav::{caldav_discover_calendars, caldav_fetch_events, caldav_sync_account, caldav_test_connection};
 
 struct ThemeMenuState<R: Runtime> {
     light: CheckMenuItem<R>,
