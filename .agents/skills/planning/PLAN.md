@@ -53,6 +53,7 @@ A cross-platform task management app for todos, tasks, and routines with CalDAV 
 | 3 | Views | Week 3-4 | Calendar, Planner, recurrence |
 | 4 | CalDAV Sync | Week 4-5 | Two-way sync with CalDAV servers |
 | 5 | Polish | Week 5-6 | Notifications, testing, builds |
+| 6 | Provider Abstraction | Week 7-8 | Make TS layer fully provider-agnostic |
 
 ## Project Structure
 

@@ -12,6 +12,7 @@
 - [x] Phase 3: Calendar & Planner Views
 - [x] Phase 4: CalDAV Sync
 - [ ] Phase 5: Polish & Notifications
+- [ ] Phase 6: Provider Abstraction
 
 ## Detailed Progress
 
@@ -93,6 +94,40 @@
 - [x] `src/hooks/use-auto-sync.ts` — `useAutoSync(adapter)` hook: periodic `setInterval` (reacts to interval setting changes via store subscription) + debounced 30s sync when pending-task count increases (uses `subscribeWithSelector` on `useTaskStore`)
 - [x] `AutoSyncMount` inner component in `AppProvider` — mounts only after `ready === true`, calls `useAutoSync(adapter)`
 - [x] Settings UI "Sync" section above Accounts — `<select>` for Off / 5 / 15 / 30 / 60 min interval, styled with border/bg-background
+
+### Phase 6: Provider Abstraction
+- [ ] 6.1 Rust Provider Metadata System
+  - [ ] Metadata types in `providers/src/lib.rs` (ProviderFieldDef, ProviderMapFieldDef, ProviderMetadata)
+  - [ ] `metadata()` method on SyncProvider trait
+  - [ ] CalDavProvider metadata implementation
+  - [ ] GitHubProvider metadata implementation
+  - [ ] `dispatch::list_providers()` + `dispatch::provider_metadata()`
+  - [ ] Tauri IPC commands (`list_providers`, `get_provider_metadata`)
+  - [ ] TS types + IPC bridge functions
+- [ ] 6.2 Unified DB Schema + Repository
+  - [ ] Migration v10 (create unified tables, migrate data, rename columns, drop old tables)
+  - [ ] ProviderAccount + ProviderMap TS types (replace CalDavAccount, GitHubAccount, etc.)
+  - [ ] Task.caldavUid → remoteId, TaskList.caldavUrl → remoteUrl
+  - [ ] Generic createProviderAccountRepository + createProviderMapRepository
+  - [ ] Update task/list repos for renamed columns
+- [ ] 6.3 Unified Sync Store
+  - [ ] Replace 4 state arrays with `accounts: ProviderAccount[]` + `maps: ProviderMap[]`
+  - [ ] Consolidate duplicate account/map actions into generic versions
+  - [ ] Single unified `syncAccount(accountId)` replacing CalDAV + GitHub variants
+  - [ ] Simplify `syncAll()` and `syncPending()`
+  - [ ] Update auto-sync hook and other consumers
+- [ ] 6.4 Generic Settings UI
+  - [ ] ProviderAccountRow (replaces CalDavAccountRow + GitHubAccountRow)
+  - [ ] SourceSettingsInline (replaces RepoSettingsInline)
+  - [ ] AddAccountForm (replaces AddCalDavAccountForm + AddGitHubAccountForm)
+  - [ ] Simplified AddAccountModal + EditAccountModal
+  - [ ] Dynamic Lucide icon rendering from metadata
+  - [ ] Delete all provider-specific UI components
+- [ ] 6.5 Cleanup & Verification
+  - [ ] Remove dead types and stale references
+  - [ ] cargo build + tsc --noEmit pass
+  - [ ] Smoke test both providers end-to-end
+  - [ ] Update PROGRESS.md with implementation notes
 
 ## Blockers
 
