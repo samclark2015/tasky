@@ -23,6 +23,11 @@ import { cn } from '@/lib/utils';
 
 type PanelState = 'list' | 'add-caldav' | 'add-github';
 
+type EditingAccount =
+  | { type: 'caldav'; account: CalDavAccount }
+  | { type: 'github'; account: GitHubAccount }
+  | null;
+
 export function SettingsView() {
   const { adapter } = useApp();
   const {
@@ -34,8 +39,7 @@ export function SettingsView() {
   const { tasks } = useTaskStore();
   const { lists } = useListStore();
   const [panel, setPanel] = useState<PanelState>('list');
-  const [editingCalDav, setEditingCalDav] = useState<CalDavAccount | null>(null);
-  const [editingGitHub, setEditingGitHub] = useState<GitHubAccount | null>(null);
+  const [editingAccount, setEditingAccount] = useState<EditingAccount>(null);
 
   const hasAnyAccount = accounts.length > 0 || githubAccounts.length > 0;
 
@@ -97,7 +101,7 @@ export function SettingsView() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground">CalDAV Accounts</h2>
             <button
-              onClick={() => { setEditingCalDav(null); setPanel('add-caldav'); }}
+              onClick={() => { setEditingAccount(null); setPanel('add-caldav'); }}
               className="flex items-center gap-1 text-xs text-primary hover:underline"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -119,14 +123,14 @@ export function SettingsView() {
               account={account}
               calendarMaps={calendarMaps}
               lists={lists}
-              onEdit={() => setEditingCalDav(account)}
+              onEdit={() => setEditingAccount({ type: 'caldav', account })}
               onDelete={() => adapter && deleteAccount(adapter, account.id)}
             />
           ))}
         </section>
 
         {/* Add CalDAV form (inline, new accounts only) */}
-        {panel === 'add-caldav' && !editingCalDav && adapter && (
+        {panel === 'add-caldav' && !editingAccount && adapter && (
           <AddCalDavAccountForm
             key="new-caldav"
             existing={null}
@@ -142,7 +146,7 @@ export function SettingsView() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground">GitHub Accounts</h2>
             <button
-              onClick={() => { setEditingGitHub(null); setPanel('add-github'); }}
+              onClick={() => { setEditingAccount(null); setPanel('add-github'); }}
               className="flex items-center gap-1 text-xs text-primary hover:underline"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -164,14 +168,14 @@ export function SettingsView() {
               account={account}
               repoMaps={githubRepoMaps}
               lists={lists}
-              onEdit={() => setEditingGitHub(account)}
+              onEdit={() => setEditingAccount({ type: 'github', account })}
               onDelete={() => adapter && deleteGitHubAccount(adapter, account.id)}
             />
           ))}
         </section>
 
         {/* Add GitHub form (inline, new accounts only) */}
-        {panel === 'add-github' && !editingGitHub && adapter && (
+        {panel === 'add-github' && !editingAccount && adapter && (
           <AddGitHubAccountForm
             key="new-github"
             existing={null}
@@ -182,22 +186,15 @@ export function SettingsView() {
         )}
       </div>
 
-      {/* Edit GitHub account modal */}
-      {editingCalDav && adapter && (
-        <CalDavEditModal
-          account={editingCalDav}
+      {/* Edit account modal */}
+      {editingAccount && adapter && (
+        <EditAccountModal
+          editingAccount={editingAccount}
           adapter={adapter}
           lists={lists}
           calendarMaps={calendarMaps}
-          onClose={() => setEditingCalDav(null)}
-        />
-      )}
-      {editingGitHub && adapter && (
-        <GitHubEditModal
-          account={editingGitHub}
-          adapter={adapter}
           repoMaps={githubRepoMaps}
-          onClose={() => setEditingGitHub(null)}
+          onClose={() => setEditingAccount(null)}
         />
       )}
     </div>
@@ -348,19 +345,21 @@ function GitHubAccountRow({
   );
 }
 
-// ── CalDavEditModal ───────────────────────────────────────────────────────────
+// ── EditAccountModal ──────────────────────────────────────────────────────────
 
-function CalDavEditModal({
-  account,
+function EditAccountModal({
+  editingAccount,
   adapter,
   lists,
   calendarMaps,
+  repoMaps,
   onClose,
 }: {
-  account: CalDavAccount;
+  editingAccount: NonNullable<EditingAccount>;
   adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
   lists: TaskList[];
   calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
+  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
   onClose: () => void;
 }) {
   return (
@@ -371,18 +370,31 @@ function CalDavEditModal({
           aria-describedby={undefined}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
         >
-          <Dialog.Title className="sr-only">Edit CalDAV Account</Dialog.Title>
+          <Dialog.Title className="sr-only">
+            {editingAccount.type === 'caldav' ? 'Edit CalDAV Account' : 'Edit GitHub Account'}
+          </Dialog.Title>
           <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
             <div className="p-4">
-              <AddCalDavAccountForm
-                key={account.id}
-                existing={account}
-                adapter={adapter}
-                lists={lists}
-                calendarMaps={calendarMaps}
-                onDone={onClose}
-                noBorder
-              />
+              {editingAccount.type === 'caldav' ? (
+                <AddCalDavAccountForm
+                  key={editingAccount.account.id}
+                  existing={editingAccount.account}
+                  adapter={adapter}
+                  lists={lists}
+                  calendarMaps={calendarMaps}
+                  onDone={onClose}
+                  noBorder
+                />
+              ) : (
+                <AddGitHubAccountForm
+                  key={editingAccount.account.id}
+                  existing={editingAccount.account}
+                  adapter={adapter}
+                  repoMaps={repoMaps}
+                  onDone={onClose}
+                  noBorder
+                />
+              )}
             </div>
           </div>
         </Dialog.Content>
@@ -609,46 +621,6 @@ function AddCalDavAccountForm({
         </div>
       )}
     </section>
-  );
-}
-
-// ── GitHubEditModal ───────────────────────────────────────────────────────────
-
-function GitHubEditModal({
-  account,
-  adapter,
-  repoMaps,
-  onClose,
-}: {
-  account: GitHubAccount;
-  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
-  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
-  onClose: () => void;
-}) {
-  return (
-    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
-        >
-          <Dialog.Title className="sr-only">Edit GitHub Account</Dialog.Title>
-          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
-            <div className="p-4">
-              <AddGitHubAccountForm
-                key={account.id}
-                existing={account}
-                adapter={adapter}
-                repoMaps={repoMaps}
-                onDone={onClose}
-                noBorder
-              />
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
   );
 }
 
