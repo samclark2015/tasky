@@ -374,8 +374,6 @@ function rowToGitHubAccount(row: Record<string, unknown>): GitHubAccount {
     id: row.id as string,
     displayName: row.display_name as string,
     token: row.token as string,
-    query: (row.query as string | null) ?? 'assignee:@me is:open',
-    readOnly: Boolean(row.read_only),
     lastSyncedAt: (row.last_synced_at as string | null) ?? null,
     syncEnabled: Boolean(row.sync_enabled),
     createdAt: row.created_at as string,
@@ -388,6 +386,8 @@ function rowToGitHubRepoMap(row: Record<string, unknown>): GitHubRepoMap {
     listId: row.list_id as string,
     accountId: row.account_id as string,
     repoFullName: row.repo_full_name as string,
+    query: (row.query as string | null) ?? null,
+    readOnly: Boolean(row.read_only),
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -414,14 +414,12 @@ export function createGitHubAccountRepository(db: DatabaseAdapter) {
       const now = new Date().toISOString();
       await db.execute(
         `INSERT INTO github_accounts
-         (id, display_name, token, query, read_only, last_synced_at, sync_enabled, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, display_name, token, last_synced_at, sync_enabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           account.id,
           account.displayName,
           account.token,
-          account.query,
-          account.readOnly ? 1 : 0,
           account.lastSyncedAt ?? null,
           account.syncEnabled ? 1 : 0,
           now,
@@ -437,8 +435,6 @@ export function createGitHubAccountRepository(db: DatabaseAdapter) {
 
       if (updates.displayName !== undefined) { fields.push('display_name = ?'); values.push(updates.displayName); }
       if (updates.token !== undefined) { fields.push('token = ?'); values.push(updates.token); }
-      if (updates.query !== undefined) { fields.push('query = ?'); values.push(updates.query); }
-      if (updates.readOnly !== undefined) { fields.push('read_only = ?'); values.push(updates.readOnly ? 1 : 0); }
       if (updates.lastSyncedAt !== undefined) { fields.push('last_synced_at = ?'); values.push(updates.lastSyncedAt); }
       if (updates.syncEnabled !== undefined) { fields.push('sync_enabled = ?'); values.push(updates.syncEnabled ? 1 : 0); }
 
@@ -496,9 +492,40 @@ export function createGitHubRepoMapRepository(db: DatabaseAdapter) {
       const now = new Date().toISOString();
       await db.execute(
         `INSERT OR REPLACE INTO github_repo_map
-         (list_id, account_id, repo_full_name, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [map.listId, map.accountId, map.repoFullName, now, now]
+         (list_id, account_id, repo_full_name, query, read_only, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          map.listId,
+          map.accountId,
+          map.repoFullName,
+          map.query ?? null,
+          map.readOnly ? 1 : 0,
+          now,
+          now,
+        ]
+      );
+    },
+
+    async update(listId: string, updates: { query?: string | null; readOnly?: boolean }): Promise<void> {
+      const now = new Date().toISOString();
+      const fields: string[] = [];
+      const values: unknown[] = [];
+
+      if ('query' in updates) { fields.push('query = ?'); values.push(updates.query ?? null); }
+      if ('readOnly' in updates) {
+        fields.push('read_only = ?');
+        values.push(updates.readOnly ? 1 : 0);
+      }
+
+      if (fields.length === 0) return;
+
+      fields.push('updated_at = ?');
+      values.push(now);
+      values.push(listId);
+
+      await db.execute(
+        `UPDATE github_repo_map SET ${fields.join(', ')} WHERE list_id = ?`,
+        values
       );
     },
 

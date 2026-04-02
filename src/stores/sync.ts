@@ -76,6 +76,11 @@ interface SyncStore {
   discoverGitHubRepos: (token: string) => Promise<ProviderCalendar[]>;
   linkGitHubRepo: (adapter: DatabaseAdapter, accountId: string, repoFullName: string, list: TaskList) => Promise<void>;
   unlinkGitHubRepo: (adapter: DatabaseAdapter, listId: string) => Promise<void>;
+  updateGitHubRepoMap: (
+    adapter: DatabaseAdapter,
+    listId: string,
+    updates: { query?: string | null; readOnly?: boolean },
+  ) => Promise<void>;
   syncGitHubAccount: (
     adapter: DatabaseAdapter,
     accountId: string,
@@ -376,6 +381,8 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       listId: list.id,
       accountId,
       repoFullName,
+      query: null,
+      readOnly: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -396,6 +403,16 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     }));
   },
 
+  async updateGitHubRepoMap(adapter, listId, updates) {
+    const repoMapRepo = createGitHubRepoMapRepository(adapter);
+    await repoMapRepo.update(listId, updates);
+    set((state) => ({
+      githubRepoMaps: state.githubRepoMaps.map((m) =>
+        m.listId === listId ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m
+      ),
+    }));
+  },
+
   async syncGitHubAccount(adapter, accountId, tasks, onTasksChanged) {
     const account = get().githubAccounts.find((a) => a.id === accountId);
     if (!account || !account.syncEnabled) {
@@ -405,7 +422,6 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     const maps = get().githubRepoMaps.filter((m) => m.accountId === accountId);
     const taskRepo = createTaskRepository(adapter);
     const accountRepo = createGitHubAccountRepository(adapter);
-    const config = { token: account.token, query: account.query, read_only: account.readOnly };
 
     const result: SyncResult = {
       accountId,
@@ -443,6 +459,11 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       }));
 
       try {
+        const config = {
+          token: account.token,
+          query: map.query ?? 'assignee:@me is:open',
+          read_only: map.readOnly,
+        };
         const syncResult = await providerSync(
           'github',
           config,

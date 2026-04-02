@@ -116,4 +116,18 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       ALTER TABLE github_accounts ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    version: 7,
+    sql: `
+      ALTER TABLE github_repo_map ADD COLUMN query TEXT;
+      ALTER TABLE github_repo_map ADD COLUMN read_only INTEGER;
+    `,
+  },
+  {
+    version: 8,
+    sql: `
+      ALTER TABLE github_accounts DROP COLUMN query;
+      ALTER TABLE github_accounts DROP COLUMN read_only;
+    `,
+  },
 ];

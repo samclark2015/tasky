@@ -105,10 +105,6 @@ export interface GitHubAccount {
   displayName: string;
   /** Personal Access Token (stored plaintext for MVP; encrypt before shipping) */
   token: string;
-  /** GitHub search query used when fetching issues. Defaults to "assignee:@me is:open". */
-  query: string;
-  /** When true, sync only pulls issues in — no push or delete back to GitHub. */
-  readOnly: boolean;
   lastSyncedAt: string | null;
   syncEnabled: boolean;
   createdAt: string;
@@ -123,6 +119,13 @@ export interface GitHubRepoMap {
   accountId: string;
   /** Full repository name, e.g. "owner/repo" */
   repoFullName: string;
+  /**
+   * Issue search query for this repo.
+   * null = use the default ("assignee:@me is:open").
+   */
+  query: string | null;
+  /** When true, sync only pulls issues in — no push or delete back to GitHub. */
+  readOnly: boolean;
   createdAt: string;
   updatedAt: string;
 }

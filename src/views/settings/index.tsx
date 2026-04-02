@@ -3,7 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ViewHeader } from '@/components/layout/view-header';
 import { useApp } from '@/components/app-provider';
 import { useTaskStore, useListStore, useSyncStore } from '@/stores';
-import type { CalDavAccount, GitHubAccount, TaskList } from '@/types';
+import type { CalDavAccount, GitHubAccount, GitHubRepoMap, TaskList } from '@/types';
 import type { ProviderCalendar } from '@/providers/types';
 import {
   Wifi,
@@ -162,14 +162,15 @@ export function SettingsView() {
             </div>
           )}
 
-          {githubAccounts.map((account) => (
+          {adapter && githubAccounts.map((account) => (
             <GitHubAccountRow
               key={account.id}
               account={account}
               repoMaps={githubRepoMaps}
               lists={lists}
+              adapter={adapter}
               onEdit={() => setEditingAccount({ type: 'github', account })}
-              onDelete={() => adapter && deleteGitHubAccount(adapter, account.id)}
+              onDelete={() => deleteGitHubAccount(adapter, account.id)}
             />
           ))}
         </section>
@@ -273,20 +274,76 @@ function CalDavAccountRow({
 
 // ── GitHubAccountRow ──────────────────────────────────────────────────────────
 
+function RepoSettingsInline({
+  map,
+  adapter,
+}: {
+  map: GitHubRepoMap;
+  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
+}) {
+  const { updateGitHubRepoMap } = useSyncStore();
+  const [query, setQuery] = useState(map.query ?? '');
+  const [readOnly, setReadOnly] = useState(map.readOnly);
+
+  function handleQueryBlur() {
+    const trimmed = query.trim();
+    updateGitHubRepoMap(adapter, map.listId, { query: trimmed || null });
+  }
+
+  function handleReadOnlyChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const next = e.target.checked;
+    setReadOnly(next);
+    updateGitHubRepoMap(adapter, map.listId, { readOnly: next });
+  }
+
+  return (
+    <div className="mt-1.5 ml-4 space-y-1.5 pl-2 border-l border-border">
+      <div>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onBlur={handleQueryBlur}
+          placeholder="assignee:@me is:open"
+          className="w-full text-xs border border-input rounded px-2 py-1 bg-background outline-none focus:ring-1 focus:ring-ring font-mono placeholder:text-muted-foreground/50"
+        />
+        <p className="text-xs text-muted-foreground mt-0.5">
+          GitHub search syntax. <code className="bg-muted px-0.5 rounded">repo:</code> and <code className="bg-muted px-0.5 rounded">is:issue</code> added automatically.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          id={`ro-${map.listId}`}
+          type="checkbox"
+          checked={readOnly}
+          onChange={handleReadOnlyChange}
+          className="h-3.5 w-3.5 rounded border-input accent-primary"
+        />
+        <label htmlFor={`ro-${map.listId}`} className="text-xs text-muted-foreground cursor-pointer select-none">
+          Read-only — pull issues in only, never push changes back to GitHub
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function GitHubAccountRow({
   account,
   repoMaps,
   lists,
+  adapter,
   onEdit,
   onDelete,
 }: {
   account: GitHubAccount;
   repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
   lists: TaskList[];
+  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [expandedRepo, setExpandedRepo] = useState<string | null>(null);
   const myMaps = repoMaps.filter((m) => m.accountId === account.id);
 
   return (
@@ -317,18 +374,34 @@ function GitHubAccountRow({
           ) : (
             myMaps.map((m) => {
               const list = lists.find((l) => l.id === m.listId);
+              const isRepoExpanded = expandedRepo === m.listId;
               return (
-                <div key={m.listId} className="flex items-center gap-2 text-xs">
-                  {list && (
-                    <span
-                      className="h-2 w-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: list.color ?? '#6366f1' }}
+                <div key={m.listId} className="text-xs">
+                  <div className="flex items-center gap-2">
+                    {list && (
+                      <span
+                        className="h-2 w-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: list.color ?? '#6366f1' }}
+                      />
+                    )}
+                    <span className="flex-1 truncate text-muted-foreground">
+                      {list?.name ?? m.listId}
+                    </span>
+                    <span className="text-muted-foreground/60 truncate max-w-[140px]">{m.repoFullName}</span>
+                    <button
+                      onClick={() => setExpandedRepo(isRepoExpanded ? null : m.listId)}
+                      className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                      title="Per-repo settings"
+                    >
+                      {isRepoExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                    </button>
+                  </div>
+                  {isRepoExpanded && (
+                    <RepoSettingsInline
+                      map={m}
+                      adapter={adapter}
                     />
                   )}
-                  <span className="flex-1 truncate text-muted-foreground">
-                    {list?.name ?? m.listId}
-                  </span>
-                  <span className="text-muted-foreground/60 truncate max-w-[180px]">{m.repoFullName}</span>
                 </div>
               );
             })
@@ -654,8 +727,6 @@ function AddGitHubAccountForm({
   const [step, setStep] = useState<GitHubFormStep>('credentials');
   const [displayName, setDisplayName] = useState(existing?.displayName ?? '');
   const [token, setToken] = useState(existing?.token ?? '');
-  const [query, setQuery] = useState(existing?.query ?? 'assignee:@me is:open');
-  const [readOnly, setReadOnly] = useState(existing?.readOnly ?? false);
   const [testError, setTestError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [discovering, setDiscovering] = useState(false);
@@ -673,8 +744,6 @@ function AddGitHubAccountForm({
         const account = await addGitHubAccount(adapter, {
           displayName: displayName || 'GitHub',
           token,
-          query: query || 'assignee:@me is:open',
-          readOnly,
           syncEnabled: true,
         });
         accountId = account.id;
@@ -683,8 +752,6 @@ function AddGitHubAccountForm({
         await updateGitHubAccount(adapter, accountId, {
           displayName: displayName || 'GitHub',
           token,
-          query: query || 'assignee:@me is:open',
-          readOnly,
         });
       }
       setStep('repos');
@@ -751,33 +818,6 @@ function AddGitHubAccountForm({
               Requires <code className="bg-muted px-1 rounded">repo</code> scope to read and write issues.
             </p>
           </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">
-              Issue Search Query
-            </label>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="assignee:@me is:open"
-              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring font-mono"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              GitHub search syntax. <code className="bg-muted px-1 rounded">repo:</code> and <code className="bg-muted px-1 rounded">is:issue</code> are added automatically.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              id="github-read-only"
-              type="checkbox"
-              checked={readOnly}
-              onChange={(e) => setReadOnly(e.target.checked)}
-              className="h-3.5 w-3.5 rounded border-input accent-primary"
-            />
-            <label htmlFor="github-read-only" className="text-xs text-muted-foreground cursor-pointer select-none">
-              Read-only — pull issues in only, never push changes back to GitHub
-            </label>
-          </div>
 
           {testError && (
             <p className="text-xs text-destructive flex items-center gap-1">
@@ -822,27 +862,33 @@ function AddGitHubAccountForm({
               </div>
             )}
             {!discovering && discovered.map((repo) => {
-              const isLinked = savedAccountId
-                ? repoMaps.some((m) => m.accountId === savedAccountId && m.repoFullName === repo.id)
-                : false;
+              const linkedMap = savedAccountId
+                ? repoMaps.find((m) => m.accountId === savedAccountId && m.repoFullName === repo.id)
+                : undefined;
+              const isLinked = Boolean(linkedMap);
 
               return (
-                <div key={repo.id} className="flex items-center gap-2 py-1.5 border-b border-border last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{repo.displayName ?? repo.id}</p>
-                    <p className="text-xs text-muted-foreground truncate">{repo.id}</p>
+                <div key={repo.id} className="py-1.5 border-b border-border last:border-0">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate">{repo.displayName ?? repo.id}</p>
+                      <p className="text-xs text-muted-foreground truncate">{repo.id}</p>
+                    </div>
+                    <button
+                      onClick={() => handleRepoToggle(repo)}
+                      className={cn(
+                        'flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors flex-shrink-0',
+                        isLinked
+                          ? 'bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive'
+                          : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                      )}
+                    >
+                      {isLinked ? <><Unlink className="h-3 w-3" /> Unlink</> : <><Link className="h-3 w-3" /> Link</>}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleRepoToggle(repo)}
-                    className={cn(
-                      'flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors',
-                      isLinked
-                        ? 'bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive'
-                        : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
-                    )}
-                  >
-                    {isLinked ? <><Unlink className="h-3 w-3" /> Unlink</> : <><Link className="h-3 w-3" /> Link</>}
-                  </button>
+                  {isLinked && linkedMap && (
+                    <RepoSettingsInline map={linkedMap} adapter={adapter} />
+                  )}
                 </div>
               );
             })}
