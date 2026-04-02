@@ -119,11 +119,11 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
   },
 
   async testConnection(serverUrl, username, password) {
-    return providerTestConnection('caldav', { serverUrl, username, password });
+    return providerTestConnection('caldav', { server_url: serverUrl, username, password });
   },
 
   async discoverCalendars(serverUrl, username, password) {
-    return providerDiscoverCalendars('caldav', { serverUrl, username, password });
+    return providerDiscoverCalendars('caldav', { server_url: serverUrl, username, password });
   },
 
   async linkCalendar(adapter, accountId, calendarHref, list) {
@@ -163,7 +163,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     const maps = get().calendarMaps.filter((m) => m.accountId === accountId);
     const taskRepo = createTaskRepository(adapter);
     const accountRepo = createAccountRepository(adapter);
-    const config = { serverUrl: account.serverUrl, username: account.username, password: account.password };
+    const config = { server_url: account.serverUrl, username: account.username, password: account.password };
 
     const result: SyncResult = {
       accountId,

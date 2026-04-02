@@ -44,7 +44,7 @@ export const useEventStore = create<EventStore>()(
         try {
           const providerEvents = await providerFetchEvents(
             'caldav',
-            { serverUrl, username, password },
+            { server_url: serverUrl, username, password },
             calendarHref,
             rangeStart,
             rangeEnd,

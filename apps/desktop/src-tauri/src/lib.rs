@@ -2,7 +2,7 @@ mod providers;
 
 use std::sync::Mutex;
 use tauri::{Runtime, menu::CheckMenuItem};
-use providers::caldav::{caldav_discover_calendars, caldav_fetch_events, caldav_sync_account, caldav_test_connection};
+use providers::{discover_calendars, fetch_events, sync_account, test_connection};
 
 struct ThemeMenuState<R: Runtime> {
     light: CheckMenuItem<R>,
@@ -47,19 +47,19 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             sync_theme,
             dev_commands::reset_database,
-            caldav_test_connection,
-            caldav_discover_calendars,
-            caldav_sync_account,
-            caldav_fetch_events,
+            test_connection,
+            discover_calendars,
+            sync_account,
+            fetch_events,
         ]);
     #[cfg(not(debug_assertions))]
     let builder = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             sync_theme,
-            caldav_test_connection,
-            caldav_discover_calendars,
-            caldav_sync_account,
-            caldav_fetch_events,
+            test_connection,
+            discover_calendars,
+            sync_account,
+            fetch_events,
         ]);
 
     builder

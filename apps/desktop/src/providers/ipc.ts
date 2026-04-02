@@ -1,8 +1,8 @@
 // Generic IPC bridge between the TS app and Rust provider implementations.
 //
 // All provider logic lives in Rust. This file contains one function per
-// operation, each of which calls the Rust command named
-// `{providerId}_{operation}` (e.g. "caldav_sync_account").
+// operation, each of which calls a provider-agnostic Rust command, passing
+// the provider id and an opaque config object as arguments.
 //
 // Adding a new provider requires only a Rust implementation — no new TS
 // code is needed here.
@@ -152,12 +152,12 @@ function toWirePushInput(t: TaskPushInput) {
 
 export async function providerTestConnection(
   providerId: string,
-  config: Record<string, string>,
+  config: Record<string, unknown>,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const result = await invoke<{ ok: boolean; principal: string | null; error: string | null }>(
-      `${providerId}_test_connection`,
-      config,
+      'test_connection',
+      { provider: providerId, config },
     );
     return { ok: result.ok, error: result.error ?? undefined };
   } catch (e) {
@@ -167,24 +167,25 @@ export async function providerTestConnection(
 
 export async function providerDiscoverCalendars(
   providerId: string,
-  config: Record<string, string>,
+  config: Record<string, unknown>,
 ): Promise<ProviderCalendar[]> {
   const result = await invoke<{ calendars: WireProviderCalendar[]; error: string | null }>(
-    `${providerId}_discover_calendars`,
-    config,
+    'discover_calendars',
+    { provider: providerId, config },
   );
   return result.calendars.map(fromWireCalendar);
 }
 
 export async function providerSync(
   providerId: string,
-  config: Record<string, string>,
+  config: Record<string, unknown>,
   calendarId: string,
   pending: TaskPushInput[],
   deleted: TaskDeleteInput[],
 ): Promise<SyncOutput> {
-  const result = await invoke<WireSyncOutput>(`${providerId}_sync_account`, {
-    ...config,
+  const result = await invoke<WireSyncOutput>('sync_account', {
+    provider: providerId,
+    config,
     calendarHref: calendarId,
     pendingTasks: pending.map(toWirePushInput),
     deletedHrefs: deleted.map((d) => ({ href: d.href, etag: d.etag })),
@@ -194,15 +195,16 @@ export async function providerSync(
 
 export async function providerFetchEvents(
   providerId: string,
-  config: Record<string, string>,
+  config: Record<string, unknown>,
   calendarId: string,
   rangeStart: string,
   rangeEnd: string,
 ): Promise<ProviderEvent[]> {
   const result = await invoke<{ events: WireProviderEvent[]; error: string | null }>(
-    `${providerId}_fetch_events`,
+    'fetch_events',
     {
-      ...config,
+      provider: providerId,
+      config,
       calendarHref: calendarId,
       rangeStart,
       rangeEnd,

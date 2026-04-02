@@ -124,3 +124,61 @@ pub trait SyncProvider {
         range_end: &str,
     ) -> Result<Vec<ProviderEvent>, String>;
 }
+
+/// Route provider operations to the correct implementation by string identifier.
+///
+/// This is the single location in the codebase that maps provider id strings
+/// to concrete provider types. Callers pass an opaque `config` value whose
+/// schema is defined by each provider.
+pub mod dispatch {
+    use super::*;
+
+    pub async fn test_connection(
+        provider: &str,
+        config: &serde_json::Value,
+    ) -> Result<bool, String> {
+        match provider {
+            "caldav" => caldav::CalDavProvider::test_connection(config).await,
+            _ => Err(format!("unknown provider: {provider}")),
+        }
+    }
+
+    pub async fn discover_calendars(
+        provider: &str,
+        config: &serde_json::Value,
+    ) -> Result<Vec<ProviderCalendar>, String> {
+        match provider {
+            "caldav" => caldav::CalDavProvider::discover_calendars(config).await,
+            _ => Err(format!("unknown provider: {provider}")),
+        }
+    }
+
+    pub async fn sync(
+        provider: &str,
+        config: &serde_json::Value,
+        calendar_id: &str,
+        pending: Vec<TaskPushInput>,
+        deleted: Vec<TaskDeleteInput>,
+    ) -> Result<SyncOutput, String> {
+        match provider {
+            "caldav" => caldav::CalDavProvider::sync(config, calendar_id, pending, deleted).await,
+            _ => Err(format!("unknown provider: {provider}")),
+        }
+    }
+
+    pub async fn fetch_events(
+        provider: &str,
+        config: &serde_json::Value,
+        calendar_id: &str,
+        range_start: &str,
+        range_end: &str,
+    ) -> Result<Vec<ProviderEvent>, String> {
+        match provider {
+            "caldav" => {
+                caldav::CalDavProvider::fetch_events(config, calendar_id, range_start, range_end)
+                    .await
+            }
+            _ => Err(format!("unknown provider: {provider}")),
+        }
+    }
+}
