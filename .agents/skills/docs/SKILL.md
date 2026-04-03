@@ -13,17 +13,57 @@ This skill governs the user-facing documentation for Tasky. It defines what to d
 
 ## Documentation Location
 
-All user-facing docs live in `docs/` at the project root:
+The docs site is an **Astro 5** project located at `docs/`. The site has two parts:
+
+- **Landing page** — `docs/src/pages/index.astro` (Hero, Features, Download sections)
+- **Doc pages** — `docs/src/pages/*.md` (one file per topic, rendered via `DocLayout.astro`)
 
 ```
 docs/
-├── getting-started.md       - Installation and first run
-├── task-management.md       - Creating and managing tasks, all fields
-├── views.md                 - Today, Inbox, Lists, Calendar, Planner, Search
-├── sync.md                  - CalDAV and GitHub Issues sync setup
-├── keyboard-shortcuts.md    - Complete shortcut reference
-└── settings.md              - Theme, auto-sync, and account management
+├── src/
+│   ├── layouts/
+│   │   ├── Layout.astro         - Base HTML layout (used by landing page)
+│   │   └── DocLayout.astro      - Docs layout: sticky header, sidebar nav, prose styles, footer
+│   ├── pages/
+│   │   ├── index.astro          - Marketing landing page
+│   │   ├── getting-started.md   - Installation and first run
+│   │   ├── task-management.md   - Creating and managing tasks, all fields
+│   │   ├── views.md             - Today, Inbox, Lists, Calendar, Planner, Search
+│   │   ├── sync.md              - CalDAV and GitHub Issues sync setup
+│   │   ├── keyboard-shortcuts.md - Complete shortcut reference
+│   │   └── settings.md          - Theme, auto-sync, and account management
+│   └── components/
+│       ├── Hero.astro
+│       ├── Features.astro
+│       ├── Download.astro
+│       └── Footer.astro
+└── astro.config.mjs             - base: /tasky/ (GitHub Pages)
 ```
+
+### Routed URLs (with base `/tasky/`)
+
+| Page | URL |
+|---|---|
+| Landing | `/tasky/` |
+| Getting Started | `/tasky/getting-started/` |
+| Task Management | `/tasky/task-management/` |
+| Views | `/tasky/views/` |
+| Sync | `/tasky/sync/` |
+| Keyboard Shortcuts | `/tasky/keyboard-shortcuts/` |
+| Settings | `/tasky/settings/` |
+
+### Adding a new doc page
+
+1. Create `docs/src/pages/<slug>.md` with this frontmatter:
+   ```md
+   ---
+   layout: '../layouts/DocLayout.astro'
+   title: Page Title
+   description: One-line description for SEO.
+   ---
+   ```
+2. Add an entry to the `navItems` array in `docs/src/layouts/DocLayout.astro`.
+3. Update this skill's file tree and URL table above.
 
 ---
 

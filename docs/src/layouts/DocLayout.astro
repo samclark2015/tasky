@@ -1,0 +1,289 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+  frontmatter?: { title?: string; description?: string };
+}
+
+const { title, description, frontmatter } = Astro.props;
+const pageTitle = frontmatter?.title ?? title ?? 'Documentation';
+const pageDescription =
+  frontmatter?.description ?? description ?? 'Tasky user documentation.';
+
+const base = import.meta.env.BASE_URL;
+
+const navItems = [
+  { label: 'Getting Started', slug: 'getting-started' },
+  { label: 'Task Management', slug: 'task-management' },
+  { label: 'Views', slug: 'views' },
+  { label: 'Sync', slug: 'sync' },
+  { label: 'Keyboard Shortcuts', slug: 'keyboard-shortcuts' },
+  { label: 'Settings', slug: 'settings' },
+];
+
+const currentPath = Astro.url.pathname.replace(/\/$/, '');
+---
+
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={pageDescription} />
+    <meta name="generator" content={Astro.generator} />
+
+    <meta property="og:title" content={`${pageTitle} — Tasky`} />
+    <meta property="og:description" content={pageDescription} />
+    <meta property="og:type" content="website" />
+
+    <link rel="icon" type="image/svg+xml" href={`${base}icon.svg`} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <title>{pageTitle} — Tasky</title>
+  </head>
+  <body class="bg-white text-gray-900 font-['Inter',sans-serif] antialiased min-h-screen flex flex-col">
+
+    <!-- Top bar -->
+    <header class="sticky top-0 z-20 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
+      <div class="max-w-5xl mx-auto px-6 h-14 flex items-center gap-3">
+        <a
+          href={base}
+          class="flex items-center gap-1.5 text-sm font-semibold text-gray-900 hover:text-brand-500 transition-colors"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Tasky
+        </a>
+        <span class="text-gray-300 select-none">/</span>
+        <span class="text-sm text-gray-500">Documentation</span>
+      </div>
+    </header>
+
+    <!-- Page body -->
+    <div class="max-w-5xl mx-auto px-6 py-10 flex gap-12 items-start">
+
+      <!-- Sidebar: sticky, self-start so it doesn't stretch with the flex row -->
+      <aside class="w-44 shrink-0 sticky top-[calc(3.5rem+1.5rem)] self-start">
+        <nav>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-3">
+            Docs
+          </p>
+          <ul class="space-y-0.5">
+            {navItems.map((item) => {
+              const href = `${base}${item.slug}`;
+              const isActive = currentPath === href.replace(/\/$/, '');
+              return (
+                <li>
+                  <a
+                    href={href}
+                    class={`block px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                      isActive
+                        ? 'bg-brand-50 text-brand-600 font-medium'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    {item.label}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      </aside>
+
+      <!-- Main content -->
+      <main class="min-w-0 flex-1 prose">
+        <slot />
+      </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-100 py-8">
+      <div class="max-w-5xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p class="text-sm text-gray-400">&copy; {new Date().getFullYear()} Tasky &middot; Open source under MIT</p>
+        <div class="flex gap-6">
+          <a
+            href="https://github.com/samclark2015/tasky"
+            class="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            GitHub
+          </a>
+          <a
+            href="https://github.com/samclark2015/tasky/releases"
+            class="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            Releases
+          </a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style is:global>
+  .prose {
+    color: #111827;
+    font-size: 0.9375rem;
+    line-height: 1.75;
+    max-width: none;
+  }
+
+  .prose h1 {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #111827;
+    margin-top: 0;
+    margin-bottom: 1.25rem;
+  }
+
+  .prose h2 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #111827;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid #f3f4f6;
+  }
+
+  .prose h3 {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #374151;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .prose p {
+    margin-top: 0;
+    margin-bottom: 0.875rem;
+    color: #374151;
+  }
+
+  .prose ul,
+  .prose ol {
+    margin-top: 0;
+    margin-bottom: 0.875rem;
+    padding-left: 1.5rem;
+    color: #374151;
+  }
+
+  .prose li {
+    margin-bottom: 0.25rem;
+  }
+
+  .prose li > ul,
+  .prose li > ol {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .prose a {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .prose a:hover {
+    text-decoration: underline;
+  }
+
+  .prose code {
+    font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85em;
+    background-color: #f3f4f6;
+    color: #1f2937;
+    padding: 0.1em 0.35em;
+    border-radius: 0.25rem;
+  }
+
+  .prose pre {
+    background-color: #1f2937;
+    color: #f9fafb;
+    padding: 1rem 1.25rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    line-height: 1.6;
+  }
+
+  .prose pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  .prose hr {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 1.75rem 0;
+  }
+
+  .prose blockquote {
+    border-left: 3px solid #e5e7eb;
+    padding-left: 1rem;
+    color: #6b7280;
+    font-style: italic;
+    margin: 0.875rem 0;
+  }
+
+  .prose strong {
+    font-weight: 600;
+    color: #111827;
+  }
+
+  /* Tables */
+  .prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  .prose thead tr {
+    border-bottom: 2px solid #e5e7eb;
+  }
+
+  .prose tbody tr {
+    border-bottom: 1px solid #f3f4f6;
+  }
+
+  .prose tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .prose th {
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .prose td {
+    padding: 0.5rem 0.75rem;
+    color: #4b5563;
+    vertical-align: top;
+  }
+
+  .prose th:first-child,
+  .prose td:first-child {
+    padding-left: 0;
+  }
+</style>
