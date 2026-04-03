@@ -328,3 +328,87 @@ export async function providerGetMetadata(providerId: string): Promise<ProviderM
   const result = await invoke<WireProviderMetadata>('get_provider_metadata', { provider: providerId });
   return fromWireMetadata(result);
 }
+
+// ── App Sync IPC ──────────────────────────────────────────────────────────────
+
+export interface AppSyncAccountConfig {
+  providerType: string;
+  serverUrl: string;
+  username: string;
+  password: string;
+  bundlePath: string;
+}
+
+export interface AppSyncStatus {
+  configured: boolean;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  isSyncing: boolean;
+  accountId: string | null;
+  serverUrl: string | null;
+  username: string | null;
+}
+
+interface WireAppSyncStatus {
+  configured: boolean;
+  last_sync_at: string | null;
+  last_error: string | null;
+  is_syncing: boolean;
+  account_id: string | null;
+  server_url: string | null;
+  username: string | null;
+}
+
+function fromWireAppSyncStatus(w: WireAppSyncStatus): AppSyncStatus {
+  return {
+    configured: w.configured,
+    lastSyncAt: w.last_sync_at,
+    lastError: w.last_error,
+    isSyncing: w.is_syncing,
+    accountId: w.account_id,
+    serverUrl: w.server_url,
+    username: w.username,
+  };
+}
+
+export async function appSyncSetup(config: AppSyncAccountConfig, passphrase: string): Promise<void> {
+  await invoke('app_sync_setup', {
+    config: {
+      provider_type: config.providerType,
+      server_url: config.serverUrl,
+      username: config.username,
+      password: config.password,
+      bundle_path: config.bundlePath,
+    },
+    passphrase,
+  });
+}
+
+export async function appSyncDelete(): Promise<void> {
+  await invoke('app_sync_delete');
+}
+
+export async function appSyncTest(): Promise<boolean> {
+  return invoke<boolean>('app_sync_test');
+}
+
+export async function appSyncPush(): Promise<string> {
+  return invoke<string>('app_sync_push');
+}
+
+export async function appSyncPull(): Promise<string> {
+  return invoke<string>('app_sync_pull');
+}
+
+export async function appSyncStatus(): Promise<AppSyncStatus> {
+  const result = await invoke<WireAppSyncStatus>('app_sync_status');
+  return fromWireAppSyncStatus(result);
+}
+
+export async function appSyncGenerateLinkCode(): Promise<string> {
+  return invoke<string>('app_sync_generate_link_code');
+}
+
+export async function appSyncJoin(linkCode: string, passphrase: string): Promise<string> {
+  return invoke<string>('app_sync_join', { link_code: linkCode, passphrase });
+}

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { DatabaseAdapter } from '@/db/repository';
 import { runMigrations } from '@/db/migrate';
 import { getDatabase, createAdapter } from '@/lib/database';
-import { useTaskStore, useListStore, useSyncStore } from '@/stores';
+import { useTaskStore, useListStore, useSyncStore, useAppSyncStore } from '@/stores';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 
 interface AppContextValue {
@@ -13,10 +13,36 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue>({ adapter: null, ready: false, error: null });
 
-/** Mounts only after the app is ready; wires up the auto-sync hook. */
+/** Mounts only after the app is ready; wires up the auto-sync hook and app sync. */
 function AutoSyncMount({ adapter }: { adapter: DatabaseAdapter }) {
   useAutoSync(adapter);
+  useAppSync();
   return null;
+}
+
+/** Handles app-level sync: pull on startup, push on window blur. */
+function useAppSync() {
+  useEffect(() => {
+    const store = useAppSyncStore.getState();
+
+    // Pull on startup (best-effort; never block app load).
+    store.loadStatus().then(() => {
+      if (useAppSyncStore.getState().status?.configured) {
+        store.pull().catch(() => { /* ignore startup pull errors */ });
+      }
+    });
+
+    // Push when the window loses focus (user switches away from the app).
+    function handleBlur() {
+      const s = useAppSyncStore.getState();
+      if (s.status?.configured && !s.status.isSyncing) {
+        s.push().catch(() => { /* ignore background push errors */ });
+      }
+    }
+
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, []);
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -83,3 +109,4 @@ export function AppProvider({ children }: { children: ReactNode }) {
 export function useApp() {
   return useContext(AppContext);
 }
+

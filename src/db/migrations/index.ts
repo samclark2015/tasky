@@ -229,4 +229,41 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       CREATE INDEX IF NOT EXISTS idx_tasks_remote_id ON tasks(remote_id);
     `,
   },
+  {
+    version: 11,
+    sql: `
+      -- ── App Sync: soft-delete support ────────────────────────────────────────
+
+      ALTER TABLE tasks ADD COLUMN deleted_at TEXT;
+      ALTER TABLE lists ADD COLUMN deleted_at TEXT;
+      ALTER TABLE provider_accounts ADD COLUMN deleted_at TEXT;
+      ALTER TABLE provider_maps ADD COLUMN deleted_at TEXT;
+
+      CREATE INDEX IF NOT EXISTS idx_tasks_deleted_at ON tasks(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_lists_deleted_at ON lists(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_provider_accounts_deleted_at ON provider_accounts(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_provider_maps_deleted_at ON provider_maps(deleted_at);
+
+      -- ── App Sync accounts (separate from provider sync accounts) ─────────────
+
+      CREATE TABLE IF NOT EXISTS app_sync_accounts (
+        id TEXT PRIMARY KEY,
+        provider_type TEXT NOT NULL,
+        server_url TEXT NOT NULL,
+        username TEXT NOT NULL,
+        bundle_path TEXT NOT NULL DEFAULT '/.tasky-sync/state.enc',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+      );
+    `,
+  },
+  {
+    version: 12,
+    sql: `
+      -- Store password + passphrase in DB (no keychain dependency).
+      ALTER TABLE app_sync_accounts ADD COLUMN password TEXT NOT NULL DEFAULT '';
+      ALTER TABLE app_sync_accounts ADD COLUMN passphrase TEXT NOT NULL DEFAULT '';
+    `,
+  },
 ];

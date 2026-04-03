@@ -41,6 +41,7 @@ export const useListStore = create<ListStore>()((set) => ({
       remoteUrl: null,
       createdAt: now,
       updatedAt: now,
+      deletedAt: null,
     };
     await repo.create(list);
     set((state) => ({ lists: [...state.lists, list] }));

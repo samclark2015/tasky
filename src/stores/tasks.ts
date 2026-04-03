@@ -56,6 +56,7 @@ export const useTaskStore = create<TaskStore>()(
         completedAt: null,
         createdAt: now,
         updatedAt: now,
+        deletedAt: null,
         timeEstimate: partial.timeEstimate ?? null,
         timeSpent: 0,
         notes: partial.notes ?? '',

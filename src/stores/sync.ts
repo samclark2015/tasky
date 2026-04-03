@@ -132,6 +132,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       syncEnabled: true,
       createdAt: now,
       updatedAt: now,
+      deletedAt: null,
     };
     await accountRepo.create(account);
     set((state) => ({ accounts: [...state.accounts, account] }));
@@ -198,6 +199,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       settings,
       createdAt: now,
       updatedAt: now,
+      deletedAt: null,
     };
     await mapRepo.create(map);
     set((state) => ({ maps: [...state.maps, map] }));
@@ -349,6 +351,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
               completedAt: remote.completedAt ?? null,
               createdAt: now,
               updatedAt: now,
+              deletedAt: null,
               timeEstimate: remote.timeEstimate ?? null,
               timeSpent: 0,
               notes: remote.notes ?? '',

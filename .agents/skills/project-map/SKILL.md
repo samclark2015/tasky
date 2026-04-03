@@ -84,7 +84,7 @@ main.tsx: React.StrictMode > ThemeProvider > AppProvider > App
 ```
 
 - `ThemeProvider` -- reads theme from Zustand, applies `dark` CSS class, provides `useTheme()` context
-- `AppProvider` -- initializes SQLite, runs migrations, hydrates stores, provides `useApp()` context with `{ adapter, ready, error }`, mounts `AutoSyncMount` (renderless component running `useAutoSync` hook)
+- `AppProvider` -- initializes SQLite, runs migrations, hydrates stores, provides `useApp()` context with `{ adapter, ready, error }`, mounts `AutoSyncMount` (renderless component running `useAutoSync` + `useAppSync` hooks — the latter pulls on startup and pushes on window blur)
 
 ### Layout
 
@@ -130,3 +130,10 @@ Shortcuts skip `<input>`, `<textarea>`, and `<select>` elements.
 | App config | `src-tauri/tauri.conf.json` |
 | Keyboard shortcuts | `src/App.tsx` |
 | Auto-sync logic | `src/hooks/use-auto-sync.ts` |
+| App Sync IPC commands (Rust) | `src-tauri/src/app_sync/mod.rs` |
+| App Sync crypto (PBKDF2+AES-256-GCM, keychain) | `src-tauri/src/app_sync/crypto.rs` |
+| App Sync bundle + LWW merge | `src-tauri/src/app_sync/bundle.rs` |
+| App Sync DB read/write | `src-tauri/src/app_sync/db.rs` |
+| App Sync WebDAV transport | `src-tauri/src/app_sync/transport.rs` |
+| App Sync Zustand store | `src/stores/app-sync.ts` |
+| App Sync IPC wrappers (TS) | `src/providers/ipc.ts` (appSync* exports at bottom) |

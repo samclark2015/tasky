@@ -21,6 +21,7 @@ export interface Task {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
   timeEstimate: number | null;
   timeSpent: number;
   notes: string;
@@ -39,6 +40,7 @@ export interface TaskList {
   remoteUrl: string | null;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
 }
 
 export type NewTaskList = Omit<TaskList, 'id' | 'createdAt' | 'updatedAt'>;
@@ -61,6 +63,7 @@ export interface ProviderAccount {
   syncEnabled: boolean;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
 }
 
 export type NewProviderAccount = Omit<ProviderAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>;
@@ -74,6 +77,31 @@ export interface ProviderMap {
   settings: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
+}
+
+// ── App Sync ──────────────────────────────────────────────────────────────────
+
+export interface AppSyncAccount {
+  id: string;
+  providerType: string;      // 'webdav' | 'github'
+  serverUrl: string;
+  username: string;
+  password: string;
+  passphrase: string;
+  bundlePath: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export type NewAppSyncAccount = Omit<AppSyncAccount, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>;
+
+export interface AppSyncStatus {
+  configured: boolean;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  isSyncing: boolean;
 }
 
 // ── CalendarEvent (kept for calendar view) ───────────────────────────────────

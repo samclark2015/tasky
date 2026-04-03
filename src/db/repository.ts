@@ -1,4 +1,4 @@
-import type { Task, TaskList, NewTask, NewTaskList, ProviderAccount, ProviderMap } from '@/types';
+import type { Task, TaskList, NewTask, NewTaskList, ProviderAccount, ProviderMap, AppSyncAccount, NewAppSyncAccount } from '@/types';
 
 export interface DatabaseAdapter {
   execute(sql: string, params?: unknown[]): Promise<void>;
@@ -20,6 +20,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     completedAt: (row.completed_at as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    deletedAt: (row.deleted_at as string | null) ?? null,
     timeEstimate: (row.time_estimate as number | null) ?? null,
     timeSpent: (row.time_spent as number) ?? 0,
     notes: (row.notes as string) ?? '',
@@ -38,6 +39,7 @@ function rowToList(row: Record<string, unknown>): TaskList {
     remoteUrl: (row.remote_url as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    deletedAt: (row.deleted_at as string | null) ?? null,
   };
 }
 
@@ -45,14 +47,14 @@ export function createTaskRepository(db: DatabaseAdapter) {
   return {
     async getAll(): Promise<Task[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM tasks ORDER BY created_at DESC'
+        'SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY created_at DESC'
       );
       return rows.map(rowToTask);
     },
 
     async getById(id: string): Promise<Task | null> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM tasks WHERE id = ?',
+        'SELECT * FROM tasks WHERE id = ? AND deleted_at IS NULL',
         [id]
       );
       return rows.length > 0 ? rowToTask(rows[0]) : null;
@@ -60,7 +62,7 @@ export function createTaskRepository(db: DatabaseAdapter) {
 
     async getByList(listId: string): Promise<Task[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM tasks WHERE list_id = ? ORDER BY created_at DESC',
+        'SELECT * FROM tasks WHERE list_id = ? AND deleted_at IS NULL ORDER BY created_at DESC',
         [listId]
       );
       return rows.map(rowToTask);
@@ -69,7 +71,7 @@ export function createTaskRepository(db: DatabaseAdapter) {
     async getDueToday(): Promise<Task[]> {
       const today = new Date().toISOString().split('T')[0];
       const rows = await db.select<Record<string, unknown>>(
-        "SELECT * FROM tasks WHERE date(due_date) = ? AND completed = 0 ORDER BY due_date ASC",
+        "SELECT * FROM tasks WHERE date(due_date) = ? AND completed = 0 AND deleted_at IS NULL ORDER BY due_date ASC",
         [today]
       );
       return rows.map(rowToTask);
@@ -77,7 +79,7 @@ export function createTaskRepository(db: DatabaseAdapter) {
 
     async getInbox(): Promise<Task[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM tasks WHERE list_id IS NULL AND completed = 0 ORDER BY created_at DESC'
+        'SELECT * FROM tasks WHERE list_id IS NULL AND completed = 0 AND deleted_at IS NULL ORDER BY created_at DESC'
       );
       return rows.map(rowToTask);
     },
@@ -152,7 +154,11 @@ export function createTaskRepository(db: DatabaseAdapter) {
     },
 
     async delete(id: string): Promise<void> {
-      await db.execute('DELETE FROM tasks WHERE id = ?', [id]);
+      const now = new Date().toISOString();
+      await db.execute(
+        'UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?',
+        [now, now, id]
+      );
     },
   };
 }
@@ -161,14 +167,14 @@ export function createListRepository(db: DatabaseAdapter) {
   return {
     async getAll(): Promise<TaskList[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM lists ORDER BY name ASC'
+        'SELECT * FROM lists WHERE deleted_at IS NULL ORDER BY name ASC'
       );
       return rows.map(rowToList);
     },
 
     async getById(id: string): Promise<TaskList | null> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM lists WHERE id = ?',
+        'SELECT * FROM lists WHERE id = ? AND deleted_at IS NULL',
         [id]
       );
       return rows.length > 0 ? rowToList(rows[0]) : null;
@@ -204,7 +210,11 @@ export function createListRepository(db: DatabaseAdapter) {
     },
 
     async delete(id: string): Promise<void> {
-      await db.execute('DELETE FROM lists WHERE id = ?', [id]);
+      const now = new Date().toISOString();
+      await db.execute(
+        'UPDATE lists SET deleted_at = ?, updated_at = ? WHERE id = ?',
+        [now, now, id]
+      );
     },
   };
 }
@@ -233,6 +243,7 @@ function rowToProviderAccount(row: Record<string, unknown>): ProviderAccount {
     syncEnabled: Boolean(row.sync_enabled),
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    deletedAt: (row.deleted_at as string | null) ?? null,
   };
 }
 
@@ -246,6 +257,7 @@ function rowToProviderMap(row: Record<string, unknown>): ProviderMap {
     settings: JSON.parse((row.settings as string) ?? '{}'),
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    deletedAt: (row.deleted_at as string | null) ?? null,
   };
 }
 
@@ -253,14 +265,14 @@ export function createProviderAccountRepository(db: DatabaseAdapter) {
   return {
     async getAll(): Promise<ProviderAccount[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM provider_accounts ORDER BY display_name ASC'
+        'SELECT * FROM provider_accounts WHERE deleted_at IS NULL ORDER BY display_name ASC'
       );
       return rows.map(rowToProviderAccount);
     },
 
     async getByType(providerType: string): Promise<ProviderAccount[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM provider_accounts WHERE provider_type = ? ORDER BY display_name ASC',
+        'SELECT * FROM provider_accounts WHERE provider_type = ? AND deleted_at IS NULL ORDER BY display_name ASC',
         [providerType]
       );
       return rows.map(rowToProviderAccount);
@@ -268,7 +280,7 @@ export function createProviderAccountRepository(db: DatabaseAdapter) {
 
     async getById(id: string): Promise<ProviderAccount | null> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM provider_accounts WHERE id = ?',
+        'SELECT * FROM provider_accounts WHERE id = ? AND deleted_at IS NULL',
         [id]
       );
       return rows.length > 0 ? rowToProviderAccount(rows[0]) : null;
@@ -316,9 +328,16 @@ export function createProviderAccountRepository(db: DatabaseAdapter) {
     },
 
     async delete(id: string): Promise<void> {
-      // Cascade delete maps for this account first
-      await db.execute('DELETE FROM provider_maps WHERE account_id = ?', [id]);
-      await db.execute('DELETE FROM provider_accounts WHERE id = ?', [id]);
+      const now = new Date().toISOString();
+      // Soft-delete the maps for this account first, then the account
+      await db.execute(
+        'UPDATE provider_maps SET deleted_at = ?, updated_at = ? WHERE account_id = ? AND deleted_at IS NULL',
+        [now, now, id]
+      );
+      await db.execute(
+        'UPDATE provider_accounts SET deleted_at = ?, updated_at = ? WHERE id = ?',
+        [now, now, id]
+      );
     },
 
     async setLastSynced(id: string, at: string): Promise<void> {
@@ -334,14 +353,14 @@ export function createProviderMapRepository(db: DatabaseAdapter) {
   return {
     async getAll(): Promise<ProviderMap[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM provider_maps'
+        'SELECT * FROM provider_maps WHERE deleted_at IS NULL'
       );
       return rows.map(rowToProviderMap);
     },
 
     async getByAccount(accountId: string): Promise<ProviderMap[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM provider_maps WHERE account_id = ?',
+        'SELECT * FROM provider_maps WHERE account_id = ? AND deleted_at IS NULL',
         [accountId]
       );
       return rows.map(rowToProviderMap);
@@ -349,7 +368,7 @@ export function createProviderMapRepository(db: DatabaseAdapter) {
 
     async getByList(listId: string): Promise<ProviderMap[]> {
       const rows = await db.select<Record<string, unknown>>(
-        'SELECT * FROM provider_maps WHERE list_id = ?',
+        'SELECT * FROM provider_maps WHERE list_id = ? AND deleted_at IS NULL',
         [listId]
       );
       return rows.map(rowToProviderMap);
@@ -396,11 +415,106 @@ export function createProviderMapRepository(db: DatabaseAdapter) {
     },
 
     async delete(id: string): Promise<void> {
-      await db.execute('DELETE FROM provider_maps WHERE id = ?', [id]);
+      const now = new Date().toISOString();
+      await db.execute(
+        'UPDATE provider_maps SET deleted_at = ?, updated_at = ? WHERE id = ?',
+        [now, now, id]
+      );
     },
 
     async deleteByAccount(accountId: string): Promise<void> {
-      await db.execute('DELETE FROM provider_maps WHERE account_id = ?', [accountId]);
+      const now = new Date().toISOString();
+      await db.execute(
+        'UPDATE provider_maps SET deleted_at = ?, updated_at = ? WHERE account_id = ? AND deleted_at IS NULL',
+        [now, now, accountId]
+      );
+    },
+  };
+}
+
+// ── App Sync Account Repository ───────────────────────────────────────────────
+
+function rowToAppSyncAccount(row: Record<string, unknown>): AppSyncAccount {
+  return {
+    id: row.id as string,
+    providerType: row.provider_type as string,
+    serverUrl: row.server_url as string,
+    username: row.username as string,
+    password: (row.password as string) ?? '',
+    passphrase: (row.passphrase as string) ?? '',
+    bundlePath: row.bundle_path as string,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+    deletedAt: (row.deleted_at as string | null) ?? null,
+  };
+}
+
+export function createAppSyncAccountRepository(db: DatabaseAdapter) {
+  return {
+    async getActive(): Promise<AppSyncAccount | null> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM app_sync_accounts WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1'
+      );
+      return rows.length > 0 ? rowToAppSyncAccount(rows[0]) : null;
+    },
+
+    async getById(id: string): Promise<AppSyncAccount | null> {
+      const rows = await db.select<Record<string, unknown>>(
+        'SELECT * FROM app_sync_accounts WHERE id = ? AND deleted_at IS NULL',
+        [id]
+      );
+      return rows.length > 0 ? rowToAppSyncAccount(rows[0]) : null;
+    },
+
+    async create(account: NewAppSyncAccount & { id: string }): Promise<void> {
+      const now = new Date().toISOString();
+      await db.execute(
+        `INSERT INTO app_sync_accounts
+         (id, provider_type, server_url, username, password, passphrase, bundle_path, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          account.id,
+          account.providerType,
+          account.serverUrl,
+          account.username,
+          account.password,
+          account.passphrase,
+          account.bundlePath,
+          now,
+          now,
+        ]
+      );
+    },
+
+    async update(id: string, updates: Partial<Pick<AppSyncAccount, 'serverUrl' | 'username' | 'bundlePath' | 'password' | 'passphrase'>>): Promise<void> {
+      const now = new Date().toISOString();
+      const fields: string[] = [];
+      const values: unknown[] = [];
+
+      if (updates.serverUrl !== undefined) { fields.push('server_url = ?'); values.push(updates.serverUrl); }
+      if (updates.username !== undefined) { fields.push('username = ?'); values.push(updates.username); }
+      if (updates.bundlePath !== undefined) { fields.push('bundle_path = ?'); values.push(updates.bundlePath); }
+      if (updates.password !== undefined) { fields.push('password = ?'); values.push(updates.password); }
+      if (updates.passphrase !== undefined) { fields.push('passphrase = ?'); values.push(updates.passphrase); }
+
+      if (fields.length === 0) return;
+
+      fields.push('updated_at = ?');
+      values.push(now);
+      values.push(id);
+
+      await db.execute(
+        `UPDATE app_sync_accounts SET ${fields.join(', ')} WHERE id = ?`,
+        values
+      );
+    },
+
+    async delete(id: string): Promise<void> {
+      const now = new Date().toISOString();
+      await db.execute(
+        'UPDATE app_sync_accounts SET deleted_at = ?, updated_at = ? WHERE id = ?',
+        [now, now, id]
+      );
     },
   };
 }
