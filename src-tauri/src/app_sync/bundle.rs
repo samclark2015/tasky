@@ -33,6 +33,7 @@ pub struct BundleTask {
     pub remote_id: Option<String>,
     pub sync_status: String,
     pub source_event_uid: Option<String>,
+    pub recurrence_chain_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

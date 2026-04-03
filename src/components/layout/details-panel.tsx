@@ -385,6 +385,7 @@ export function DetailsPanel() {
                 <RecurrenceEditor
                   value={task.recurrence}
                   onChange={(rule) => save({ recurrence: rule })}
+                  defaultDayOfMonth={task.dueDate ? parseInt((task.dueDate.includes('T') ? task.dueDate.split('T')[0] : task.dueDate).split('-')[2], 10) : undefined}
                 />
               </div>
             </div>

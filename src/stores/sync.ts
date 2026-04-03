@@ -359,6 +359,7 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
               remoteId: remote.remoteId,
               syncStatus: 'synced',
               sourceEventUid: remote.sourceEventUid ?? null,
+              recurrenceChainId: null,
             };
             await taskRepo.create(newTask);
             result.created++;

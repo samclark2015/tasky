@@ -7,11 +7,14 @@ import { TaskItem } from '@/components/task/task-item';
 import { QuickAdd } from '@/components/task/quick-add';
 import { cn } from '@/lib/utils';
 import { Plus, Clock, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
-import { format, startOfDay, addDays, isToday, isTomorrow, differenceInCalendarDays } from 'date-fns';
+import { format, startOfDay, addDays, isToday, isTomorrow, differenceInCalendarDays, isSameDay } from 'date-fns';
 import type { Task } from '@/types/types';
 import { useIsMobile } from '@/hooks/use-is-mobile';
+import { getOccurrencesBetween } from '@/lib/recurrence';
 
 const DAYS_AHEAD = 14;
+
+type VirtualTaskOccurrence = Task & { isVirtual: true };
 
 function formatDayLabel(date: Date): string {
   if (isToday(date)) return 'Today';
@@ -31,10 +34,11 @@ function minutesToDisplay(mins: number): string {
 interface DayBlockProps {
   date: Date;
   tasks: Task[];
+  virtualOccurrences: VirtualTaskOccurrence[];
   totalEstimate: number;
 }
 
-function DayBlock({ date, tasks, totalEstimate }: DayBlockProps) {
+function DayBlock({ date, tasks, virtualOccurrences, totalEstimate }: DayBlockProps) {
   const [collapsed, setCollapsed] = useState(false);
   const label = formatDayLabel(date);
   const dateStr = format(date, 'MMM d');
@@ -79,10 +83,21 @@ function DayBlock({ date, tasks, totalEstimate }: DayBlockProps) {
 
       {!collapsed && (
         <div className="px-2 pb-2">
-          {tasks.length === 0 ? (
+          {tasks.length === 0 && virtualOccurrences.length === 0 ? (
             <p className="px-4 py-2 text-xs text-muted-foreground italic">No tasks scheduled</p>
           ) : (
-            tasks.map((t) => <TaskItem key={t.id} task={t} />)
+            <>
+              {tasks.map((t) => <TaskItem key={t.id} task={t} />)}
+              {virtualOccurrences.map((t) => (
+                <div
+                  key={t.id}
+                  className="opacity-50 pointer-events-none select-none"
+                  title="Recurring occurrence (virtual)"
+                >
+                  <TaskItem task={t} />
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}
@@ -118,6 +133,33 @@ export function PlannerView() {
     return map;
   }, [tasks, upcomingDays]);
 
+  // Virtual occurrences: projected future instances of recurring tasks
+  const virtualByDay = useMemo(() => {
+    const map = new Map<string, VirtualTaskOccurrence[]>();
+    for (const day of upcomingDays) {
+      map.set(format(day, 'yyyy-MM-dd'), []);
+    }
+
+    const windowEnd = upcomingDays[upcomingDays.length - 1];
+
+    for (const task of tasks.values()) {
+      if (!task.recurrence || !task.dueDate || task.completed || task.parentId !== null) continue;
+      const anchorDate = new Date(task.dueDate);
+      const occurrences = getOccurrencesBetween(task.recurrence, anchorDate, today, windowEnd);
+      for (const date of occurrences) {
+        // Skip the base task's own due date (already shown as a real task)
+        if (isSameDay(date, anchorDate)) continue;
+        const dayKey = format(date, 'yyyy-MM-dd');
+        if (!map.has(dayKey)) continue;
+        const dateStr = date.toISOString().split('T')[0];
+        const virtualId = `${task.id}-virtual-${dateStr}`;
+        map.get(dayKey)!.push({ ...task, id: virtualId, dueDate: dateStr, isVirtual: true });
+      }
+    }
+
+    return map;
+  }, [tasks, upcomingDays, today]);
+
   const unscheduledTasks = useMemo(() => {
     return Array.from(tasks.values()).filter(
       (t) => !t.dueDate && !t.completed && t.parentId === null
@@ -127,13 +169,15 @@ export function PlannerView() {
   const estimateByDay = useMemo(() => {
     const map = new Map<string, number>();
     for (const [day, dayTasks] of tasksByDay.entries()) {
-      const total = dayTasks
+      const realTotal = dayTasks
         .filter((t) => !t.completed)
         .reduce((sum, t) => sum + (t.timeEstimate ?? 0), 0);
-      map.set(day, total);
+      const virtualTotal = (virtualByDay.get(day) ?? [])
+        .reduce((sum, t) => sum + (t.timeEstimate ?? 0), 0);
+      map.set(day, realTotal + virtualTotal);
     }
     return map;
-  }, [tasksByDay]);
+  }, [tasksByDay, virtualByDay]);
 
   function handleQuickAdd(title: string) {
     if (!adapter) return;
@@ -167,6 +211,7 @@ export function PlannerView() {
                 key={key}
                 date={day}
                 tasks={tasksByDay.get(key) ?? []}
+                virtualOccurrences={virtualByDay.get(key) ?? []}
                 totalEstimate={estimateByDay.get(key) ?? 0}
               />
             );

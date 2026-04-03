@@ -43,7 +43,8 @@ fn read_tasks(conn: &Connection) -> Result<Vec<BundleTask>, String> {
         .prepare(
             "SELECT id, list_id, parent_id, title, description, due_date, priority, tags, \
                   recurrence, completed, completed_at, created_at, updated_at, deleted_at, \
-                  time_estimate, time_spent, notes, etag, remote_id, sync_status, source_event_uid \
+                  time_estimate, time_spent, notes, etag, remote_id, sync_status, source_event_uid, \
+                  recurrence_chain_id \
                   FROM tasks",
         )
         .map_err(|e| e.to_string())?;
@@ -78,6 +79,7 @@ fn read_tasks(conn: &Connection) -> Result<Vec<BundleTask>, String> {
                     .get::<_, Option<String>>(19)?
                     .unwrap_or_else(|| "pending".into()),
                 source_event_uid: row.get(20)?,
+                recurrence_chain_id: row.get(21)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -247,8 +249,9 @@ fn upsert_tasks(conn: &Connection, tasks: &[BundleTask]) -> Result<(), String> {
         conn.execute(
             "INSERT INTO tasks (id, list_id, parent_id, title, description, due_date, priority, \
              tags, recurrence, completed, completed_at, created_at, updated_at, deleted_at, \
-             time_estimate, time_spent, notes, etag, remote_id, sync_status, source_event_uid) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21) \
+             time_estimate, time_spent, notes, etag, remote_id, sync_status, source_event_uid, \
+             recurrence_chain_id) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22) \
              ON CONFLICT(id) DO UPDATE SET \
                list_id=excluded.list_id, parent_id=excluded.parent_id, title=excluded.title, \
                description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, \
@@ -257,14 +260,15 @@ fn upsert_tasks(conn: &Connection, tasks: &[BundleTask]) -> Result<(), String> {
                deleted_at=excluded.deleted_at, time_estimate=excluded.time_estimate, \
                time_spent=excluded.time_spent, notes=excluded.notes, etag=excluded.etag, \
                remote_id=excluded.remote_id, sync_status=excluded.sync_status, \
-               source_event_uid=excluded.source_event_uid \
+               source_event_uid=excluded.source_event_uid, \
+               recurrence_chain_id=excluded.recurrence_chain_id \
              WHERE excluded.updated_at > tasks.updated_at OR excluded.deleted_at > tasks.deleted_at OR tasks.deleted_at IS NULL AND excluded.deleted_at IS NOT NULL",
             params![
                 t.id, t.list_id, t.parent_id, t.title, t.description, t.due_date, t.priority,
                 t.tags, t.recurrence, t.completed as i64, t.completed_at,
                 t.created_at, t.updated_at, t.deleted_at,
                 t.time_estimate, t.time_spent, t.notes, t.etag, t.remote_id,
-                t.sync_status, t.source_event_uid,
+                t.sync_status, t.source_event_uid, t.recurrence_chain_id,
             ],
         ).map_err(|e| format!("upsert task {}: {e}", t.id))?;
     }

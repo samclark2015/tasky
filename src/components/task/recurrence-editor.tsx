@@ -24,9 +24,11 @@ interface RecurrenceEditorProps {
   value: RecurrenceRule | null;
   onChange: (rule: RecurrenceRule | null) => void;
   className?: string;
+  /** Day-of-month to pre-fill when switching to monthly (from task's due date). */
+  defaultDayOfMonth?: number;
 }
 
-export function RecurrenceEditor({ value, onChange, className }: RecurrenceEditorProps) {
+export function RecurrenceEditor({ value, onChange, className, defaultDayOfMonth }: RecurrenceEditorProps) {
   const [expanded, setExpanded] = useState(value !== null);
 
   function toggleEnabled() {
@@ -51,6 +53,20 @@ export function RecurrenceEditor({ value, onChange, className }: RecurrenceEdito
       ? current.filter((d) => d !== day)
       : [...current, day];
     update({ byDay: next.length ? next : undefined });
+  }
+
+  function handleFreqChange(freq: RecurrenceRule['freq']) {
+    if (!value) return;
+    const patch: Partial<RecurrenceRule> = {
+      freq,
+      byDay: undefined,
+      byMonthDay: undefined,
+    };
+    // Pre-fill byMonthDay when switching to monthly
+    if (freq === 'monthly' && defaultDayOfMonth) {
+      patch.byMonthDay = [defaultDayOfMonth];
+    }
+    update(patch);
   }
 
   return (
@@ -86,7 +102,7 @@ export function RecurrenceEditor({ value, onChange, className }: RecurrenceEdito
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => update({ freq: opt.value, byDay: undefined, byMonthDay: undefined })}
+                  onClick={() => handleFreqChange(opt.value)}
                   className={cn(
                     'px-2.5 py-1 rounded text-xs font-medium border transition-colors',
                     value.freq === opt.value
@@ -121,6 +137,29 @@ export function RecurrenceEditor({ value, onChange, className }: RecurrenceEdito
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Day-of-month picker for monthly */}
+          {value.freq === 'monthly' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-12">On day</span>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={value.byMonthDay?.[0] ?? defaultDayOfMonth ?? 1}
+                onChange={(e) => {
+                  const day = parseInt(e.target.value);
+                  if (!day || day < 1) {
+                    update({ byMonthDay: undefined });
+                  } else {
+                    update({ byMonthDay: [Math.min(31, Math.max(1, day))] });
+                  }
+                }}
+                className="w-14 text-sm bg-muted rounded px-2 py-1 outline-none text-center"
+              />
+              <span className="text-xs text-muted-foreground">of each month</span>
             </div>
           )}
 

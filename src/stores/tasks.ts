@@ -4,6 +4,7 @@ import type { Task } from '@/types/types';
 import type { DatabaseAdapter } from '@/db/repository';
 import { createTaskRepository } from '@/db/repository';
 import { generateId } from '@/lib/utils';
+import { nextOccurrence } from '@/lib/recurrence';
 
 interface TaskStore {
   tasks: Map<string, Task>;
@@ -64,6 +65,7 @@ export const useTaskStore = create<TaskStore>()(
         remoteId: partial.remoteId ?? null,
         syncStatus: partial.syncStatus ?? 'pending',
         sourceEventUid: partial.sourceEventUid ?? null,
+        recurrenceChainId: partial.recurrenceChainId ?? null,
       };
       await repo.create(task);
       set((state) => {
@@ -117,6 +119,55 @@ export const useTaskStore = create<TaskStore>()(
       const completed = !task.completed;
       const completedAt = completed ? new Date().toISOString() : null;
       await get().updateTask(adapter, id, { completed, completedAt });
+
+      // When marking a recurring task complete, spawn the next instance
+      if (completed && task.recurrence && task.dueDate) {
+        const chainId = task.recurrenceChainId ?? task.id;
+
+        // Count completed instances in this chain (for count-based termination)
+        const completedCount = Array.from(get().tasks.values()).filter(
+          (t) => t.recurrenceChainId === chainId && t.completed
+        ).length;
+
+        const anchorDate = new Date(task.dueDate);
+        // afterDate is the task's own due date: find the next occurrence *after* it,
+        // not after "now" (which could be earlier than the due date).
+        const afterDate = anchorDate;
+
+        const nextDate = nextOccurrence(task.recurrence, anchorDate, afterDate, completedCount);
+        if (nextDate) {
+          // Preserve the original time component if the task had one (e.g. "2026-04-03T14:00:00.000Z").
+          // Only the date part changes; hours/minutes/seconds stay the same.
+          let nextDueDate: string;
+          if (task.dueDate.includes('T')) {
+            const originalDate = new Date(task.dueDate);
+            nextDate.setUTCHours(
+              originalDate.getUTCHours(),
+              originalDate.getUTCMinutes(),
+              originalDate.getUTCSeconds(),
+              0
+            );
+            nextDueDate = nextDate.toISOString();
+          } else {
+            nextDueDate = nextDate.toISOString().split('T')[0];
+          }
+          await get().createTask(adapter, {
+            title: task.title,
+            description: task.description,
+            listId: task.listId,
+            priority: task.priority,
+            tags: task.tags,
+            recurrence: task.recurrence,
+            timeEstimate: task.timeEstimate,
+            notes: task.notes,
+            dueDate: nextDueDate,
+            completed: false,
+            completedAt: null,
+            recurrenceChainId: chainId,
+            syncStatus: 'pending',
+          });
+        }
+      }
     },
 
     getTasksByList(listId) {

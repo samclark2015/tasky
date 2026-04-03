@@ -28,6 +28,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     remoteId: (row.remote_id as string | null) ?? null,
     syncStatus: (row.sync_status as Task['syncStatus']) ?? 'pending',
     sourceEventUid: (row.source_event_uid as string | null) ?? null,
+    recurrenceChainId: (row.recurrence_chain_id as string | null) ?? null,
   };
 }
 
@@ -91,8 +92,8 @@ export function createTaskRepository(db: DatabaseAdapter) {
           id, list_id, parent_id, title, description, due_date,
           priority, tags, recurrence, completed, completed_at,
           created_at, updated_at, time_estimate, time_spent, notes,
-          etag, remote_id, sync_status, source_event_uid
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          etag, remote_id, sync_status, source_event_uid, recurrence_chain_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           task.id,
           task.listId || null,
@@ -114,6 +115,7 @@ export function createTaskRepository(db: DatabaseAdapter) {
           task.remoteId ?? null,
           'pending',
           task.sourceEventUid ?? null,
+          task.recurrenceChainId ?? null,
         ]
       );
     },
@@ -140,6 +142,7 @@ export function createTaskRepository(db: DatabaseAdapter) {
       if (updates.listId !== undefined) { fields.push('list_id = ?'); values.push(updates.listId || null); }
       if (updates.parentId !== undefined) { fields.push('parent_id = ?'); values.push(updates.parentId); }
       if (updates.sourceEventUid !== undefined) { fields.push('source_event_uid = ?'); values.push(updates.sourceEventUid); }
+      if (updates.recurrenceChainId !== undefined) { fields.push('recurrence_chain_id = ?'); values.push(updates.recurrenceChainId); }
 
       if (fields.length === 0) return;
 

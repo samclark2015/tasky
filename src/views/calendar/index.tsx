@@ -4,6 +4,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin, { type EventResizeDoneArg, type DateClickArg } from '@fullcalendar/interaction';
+import rrulePlugin from '@fullcalendar/rrule';
 import type { EventClickArg, EventDropArg, EventInput, EventMountArg, DatesSetArg, DateSelectArg } from '@fullcalendar/core';
 import { useTaskStore, useListStore, useUIStore, useEventStore, useSyncStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
@@ -13,6 +14,7 @@ import { TaskModal } from '@/components/modals/task-modal';
 import { TaskContextMenu } from '@/components/task/task-context-menu';
 import { EventDetailPopover } from './event-detail-popover';
 import type { Task, CalendarEvent } from '@/types/types';
+import { rruleToString } from '@/lib/recurrence';
 
 const PRIORITY_COLORS: Record<string, string> = {
   high: 'hsl(0 84.2% 60.2%)',
@@ -137,6 +139,31 @@ export function CalendarView() {
           (() => { const d = new Date(start); return d.getHours() !== 0 || d.getMinutes() !== 0; })();
         const durationMs = t.timeEstimate ? t.timeEstimate * 60 * 1000 : null;
 
+        // Recurring non-completed tasks: use rrule plugin for virtual expansion
+        if (t.recurrence && !t.completed) {
+          const rruleStr = rruleToString(t.recurrence);
+          // Format dtstart: date-only tasks use a plain date; timed tasks use UTC datetime
+          const dtstart = hasTime
+            ? new Date(start).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '')
+            : start.split('T')[0].replace(/-/g, '');
+          const dtstartPrefix = hasTime ? `DTSTART:${dtstart}\n` : `DTSTART;VALUE=DATE:${dtstart}\n`;
+          const duration = durationMs
+            ? `${Math.floor(durationMs / 3600000)}:${String(Math.floor((durationMs % 3600000) / 60000)).padStart(2, '0')}`
+            : '00:30';
+
+          return {
+            id: t.id,
+            title: `↻ ${t.title}`,
+            rrule: `${dtstartPrefix}RRULE:${rruleStr}`,
+            duration,
+            backgroundColor: color,
+            borderColor: color,
+            textColor: '#fff',
+            classNames: ['fc-event-recurring'],
+            extendedProps: { task: t, type: 'task', taskId: t.id, isRecurring: true },
+          };
+        }
+
         return {
           id: t.id,
           title: t.title,
@@ -179,7 +206,9 @@ export function CalendarView() {
     (info: EventClickArg) => {
       const type = info.event.extendedProps.type;
       if (type === 'task') {
-        selectTask(info.event.id);
+        // For recurring event instances, use taskId (the base task id)
+        const taskId = info.event.extendedProps.taskId as string | undefined;
+        selectTask(taskId ?? info.event.id);
       } else if (type === 'event') {
         const event = info.event.extendedProps.event as CalendarEvent;
         const rect = info.el.getBoundingClientRect();
@@ -194,7 +223,8 @@ export function CalendarView() {
   );
 
   const handleEventDidMount = useCallback((info: EventMountArg) => {
-    const task = info.event.extendedProps.task as Task;
+    const task = info.event.extendedProps.task as Task | undefined;
+    if (!task) return;
     info.el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       setContextMenu({ task, x: e.clientX, y: e.clientY });
@@ -346,7 +376,7 @@ export function CalendarView() {
         <div className="flex-1 overflow-hidden px-4 py-3 fc-wrapper">
           <FullCalendar
             ref={calendarRef}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, rrulePlugin]}
             initialView={isMobile ? 'dayGridMonth' : 'timeGridWeek'}
             headerToolbar={isMobile
               ? { left: 'prev,next', center: 'title', right: '' }

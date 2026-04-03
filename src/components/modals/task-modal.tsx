@@ -308,7 +308,11 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
           </div>
 
           {/* recurrence */}
-          <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
+          <RecurrenceEditor
+            value={recurrence}
+            onChange={setRecurrence}
+            defaultDayOfMonth={dueDate ? parseInt(dueDate.split('-')[2], 10) : undefined}
+          />
 
           {/* notes */}
           <div className="flex gap-2">

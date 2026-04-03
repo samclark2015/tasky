@@ -266,4 +266,12 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       ALTER TABLE app_sync_accounts ADD COLUMN passphrase TEXT NOT NULL DEFAULT '';
     `,
   },
+  {
+    version: 13,
+    sql: `
+      -- Recurrence chain ID: links all instances of a recurring series together.
+      ALTER TABLE tasks ADD COLUMN recurrence_chain_id TEXT;
+      CREATE INDEX IF NOT EXISTS idx_tasks_recurrence_chain_id ON tasks(recurrence_chain_id);
+    `,
+  },
 ];

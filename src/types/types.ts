@@ -29,6 +29,7 @@ export interface Task {
   remoteId: string | null;
   syncStatus: 'synced' | 'pending' | 'conflict';
   sourceEventUid: string | null;
+  recurrenceChainId: string | null;
 }
 
 export type NewTask = Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus'>;

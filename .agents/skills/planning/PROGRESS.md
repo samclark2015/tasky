@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** Phase 7 – Mobile Responsive UI (complete)  
+**Phase:** Phase 8 – Recurrence Feature Completion ✅  
 **Last Updated:** April 3, 2026
 
 ## Phase Completion
@@ -14,6 +14,7 @@
 - [x] Phase 5: Polish & Notifications
 - [x] Phase 6: Provider Abstraction
 - [x] Phase 7: Mobile Responsive UI
+- [x] Phase 8: Recurrence Feature Completion
 
 ## Detailed Progress
 
@@ -129,6 +130,14 @@
   - [x] Fixed calendar view to use new maps/accounts API
   - [x] cargo build passes clean
   - [x] pnpm typecheck passes clean
+
+### Phase 8: Recurrence Feature Completion ✅ (completed Apr 3 2026)
+- [x] 8.1 Recurrence utility library (`src/lib/recurrence.ts` — `nextOccurrence`, `getOccurrencesBetween`, `rruleToString`; 25 unit tests all pass)
+- [x] 8.2 Schema extension: `recurrence_chain_id` column (migration v13, Task type, repo, app-sync bundle.rs + db.rs)
+- [x] 8.3 Next-instance generation on completion (`toggleComplete` in `tasks.ts`: counts chain completions, calls `nextOccurrence`, creates next task with `recurrenceChainId`)
+- [x] 8.4 Virtual occurrences in CalendarView (`@fullcalendar/rrule 6.1.20` + `rrule 2.8.1`; recurring tasks rendered as virtual rrule events with `↻` prefix)
+- [x] 8.5 Virtual occurrences in PlannerView (manual expansion via `getOccurrencesBetween`; virtual entries shown as `opacity-50 pointer-events-none`)
+- [x] 8.6 `byMonthDay` UI in `RecurrenceEditor` (monthly day-of-month number input; `defaultDayOfMonth` prop plumbed from `dueDate` in TaskModal and DetailsPanel)
 
 ## Blockers
 
@@ -275,3 +284,15 @@ None currently.
 - Settings view is fully metadata-driven: credential form fields and map settings fields are rendered generically from `ProviderMetadata.credentialFields` and `ProviderMetadata.mapFields`
 - Migration v10 performs a multi-step SQL migration: creates new tables → copies data → renames columns → drops old tables. Uses `ALTER TABLE` for column renames (SQLite 3.25+ feature)
 - `m.settings.events_only` is type `unknown` (from `Record<string,unknown>`); use `!!m.settings.events_only` for JSX boolean contexts
+
+### Phase 8: Recurrence Implementation Notes (Apr 3 2026)
+- `recurrence_chain_id` ties all instances of a recurring task together; first instance uses its own `id` as the chain id, subsequent instances inherit it
+- `nextOccurrence` is pure (no side effects): takes rule, anchor date, an `after` date (the just-completed date), and optional `completedCount` for `COUNT` enforcement
+- Weekday map in recurrence.ts: SU=0, MO=1, TU=2, WE=3, TH=4, FR=5, SA=6
+- `until` field can be ISO date (`2025-12-31`) or compact CalDAV (`20251231T235959Z`) — both parse via `new Date(until)`
+- CalendarView rrule string format: `DTSTART:20260401T090000Z\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR`; date-only tasks use `DTSTART;VALUE=DATE:20260401`
+- Virtual calendar events have `extendedProps.isRecurring: true` and `extendedProps.taskId`; clicking any virtual instance opens the base task in DetailsPanel
+- `handleEventDidMount` in CalendarView guards `if (!task) return` because rrule virtual instances may fire callbacks where the task lookup yields undefined
+- PlannerView virtual IDs use pattern `${task.id}-virtual-${dateStr}` — never collides with UUIDs
+- Virtual planner entries have `isVirtual: true`; rendered with `pointer-events-none` so they can't be interacted with (only the real base-task entry is actionable)
+- `defaultDayOfMonth` in RecurrenceEditor is pre-filled from `dueDate` string: `parseInt(dueDate.split('-')[2], 10)` (or with T-time: split on T first)
