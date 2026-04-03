@@ -11,7 +11,7 @@ pub fn open(db_path: &Path) -> Result<Connection, String> {
     let conn =
         Connection::open(db_path).map_err(|e| format!("failed to open DB for app sync: {e}"))?;
     // Enable WAL mode to allow concurrent access with tauri-plugin-sql's connection.
-    conn.execute_batch("PRAGMA journal_mode=WAL;")
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys = ON;")
         .map_err(|e| format!("WAL pragma failed: {e}"))?;
     Ok(conn)
 }
@@ -220,11 +220,12 @@ fn read_app_sync_accounts(conn: &Connection) -> Result<Vec<BundleAppSyncAccount>
 
 pub fn write_bundle(conn: &Connection, bundle: &StateBundle) -> Result<(), String> {
     // Use a transaction for atomicity.
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+    conn.execute_batch("PRAGMA defer_foreign_keys = ON; BEGIN")
+        .map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<(), String> {
-        upsert_tasks(conn, &bundle.tasks)?;
         upsert_lists(conn, &bundle.lists)?;
+        upsert_tasks(conn, &bundle.tasks)?;
         upsert_provider_accounts(conn, &bundle.provider_accounts)?;
         upsert_provider_maps(conn, &bundle.provider_maps)?;
         upsert_settings(conn, &bundle.settings)?;

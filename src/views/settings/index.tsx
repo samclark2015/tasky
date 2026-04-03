@@ -1066,6 +1066,7 @@ function AppSyncSetupForm({ onDone }: { onDone: () => void }) {
 
 function AppSyncJoinForm({ onDone }: { onDone: () => void }) {
   const appSync = useAppSyncStore();
+  const { adapter } = useApp();
   const [linkCode, setLinkCode] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -1075,6 +1076,12 @@ function AppSyncJoinForm({ onDone }: { onDone: () => void }) {
     setError(null);
     try {
       await appSync.join(linkCode.trim(), passphrase);
+      if (adapter) {
+        await Promise.all([
+          useTaskStore.getState().loadTasks(adapter),
+          useListStore.getState().loadLists(adapter),
+        ]);
+      }
       onDone();
     } catch (e) {
       setError(String(e));

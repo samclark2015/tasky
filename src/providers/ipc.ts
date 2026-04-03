@@ -410,5 +410,5 @@ export async function appSyncGenerateLinkCode(): Promise<string> {
 }
 
 export async function appSyncJoin(linkCode: string, passphrase: string): Promise<string> {
-  return invoke<string>('app_sync_join', { link_code: linkCode, passphrase });
+  return invoke<string>('app_sync_join', { linkCode, passphrase });
 }

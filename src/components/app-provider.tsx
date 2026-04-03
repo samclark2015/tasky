@@ -16,19 +16,26 @@ const AppContext = createContext<AppContextValue>({ adapter: null, ready: false,
 /** Mounts only after the app is ready; wires up the auto-sync hook and app sync. */
 function AutoSyncMount({ adapter }: { adapter: DatabaseAdapter }) {
   useAutoSync(adapter);
-  useAppSync();
+  useAppSync(adapter);
   return null;
 }
 
 /** Handles app-level sync: pull on startup, push on window blur. */
-function useAppSync() {
+function useAppSync(adapter: DatabaseAdapter) {
   useEffect(() => {
     const store = useAppSyncStore.getState();
+
+    async function reloadStores() {
+      await Promise.all([
+        useTaskStore.getState().loadTasks(adapter),
+        useListStore.getState().loadLists(adapter),
+      ]);
+    }
 
     // Pull on startup (best-effort; never block app load).
     store.loadStatus().then(() => {
       if (useAppSyncStore.getState().status?.configured) {
-        store.pull().catch(() => { /* ignore startup pull errors */ });
+        store.pull().then(reloadStores).catch(() => { /* ignore startup pull errors */ });
       }
     });
 
@@ -42,6 +49,7 @@ function useAppSync() {
 
     window.addEventListener('blur', handleBlur);
     return () => window.removeEventListener('blur', handleBlur);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
 
