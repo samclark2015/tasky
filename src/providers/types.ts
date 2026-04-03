@@ -77,3 +77,35 @@ export interface TaskDeleteInput {
   href: string;
   etag: string | null;
 }
+
+export interface ProviderFieldDef {
+  key: string;
+  label: string;
+  /** "text" | "password" | "url" */
+  fieldType: string;
+  required: boolean;
+  placeholder: string | null;
+  helpText: string | null;
+}
+
+export interface ProviderMapFieldDef {
+  key: string;
+  label: string;
+  /** "text" | "boolean" */
+  fieldType: string;
+  defaultValue: unknown;
+  helpText: string | null;
+}
+
+export interface ProviderMetadata {
+  id: string;
+  displayName: string;
+  /** Lucide icon name */
+  icon: string;
+  description: string;
+  credentialFields: ProviderFieldDef[];
+  mapFields: ProviderMapFieldDef[];
+  sourceNoun: string;
+  sourceNounPlural: string;
+  supportsEvents: boolean;
+}

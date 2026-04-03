@@ -24,7 +24,11 @@ export function CalendarView() {
   const { lists } = useListStore();
   const { selectTask } = useUIStore();
   const { events: calendarEvents, fetchEvents, calendarVisibility, toggleCalendarVisibility } = useEventStore();
-  const { accounts, calendarMaps } = useSyncStore();
+  const { accounts, maps } = useSyncStore();
+  const calendarMaps = maps.filter((m) => {
+    const account = accounts.find((a) => a.id === m.accountId);
+    return account?.providerType === 'caldav';
+  });
   const { adapter } = useApp();
   const calendarRef = useRef<FullCalendar>(null);
   const [showNewTask, setShowNewTask] = useState(false);
@@ -48,13 +52,13 @@ export function CalendarView() {
     return map;
   }, [lists]);
 
-  // Build a label map: calendarHref → display name (list name or href basename)
+  // Build a label map: sourceId → display name (list name or sourceId basename)
   const calendarLabelMap = useMemo(() => {
     const map = new Map<string, { label: string; color: string | null }>();
     for (const cm of calendarMaps) {
       const list = lists.find((l) => l.id === cm.listId);
-      map.set(cm.calendarHref, {
-        label: list?.name ?? cm.calendarHref.split('/').filter(Boolean).pop() ?? cm.calendarHref,
+      map.set(cm.sourceId, {
+        label: list?.name ?? cm.sourceId.split('/').filter(Boolean).pop() ?? cm.sourceId,
         color: list?.color ?? null,
       });
     }
@@ -70,7 +74,7 @@ export function CalendarView() {
     // Also include mapped calendars even if they have no events in range
     for (const cm of calendarMaps) {
       const account = accounts.find((a) => a.id === cm.accountId);
-      if (account?.syncEnabled) hrefs.add(cm.calendarHref);
+      if (account?.syncEnabled) hrefs.add(cm.sourceId);
     }
     return hrefs;
   }, [calendarEvents, calendarMaps, accounts]);
@@ -82,12 +86,13 @@ export function CalendarView() {
     for (const map of calendarMaps) {
       const account = accounts.find(a => a.id === map.accountId);
       if (!account || !account.syncEnabled) continue;
+      const creds = account.credentials as Record<string, string>;
       
       fetchEvents(
-        account.serverUrl,
-        account.username,
-        account.password,
-        map.calendarHref,
+        creds.server_url,
+        creds.username,
+        creds.password,
+        map.sourceId,
         dateRange.start,
         dateRange.end
       );

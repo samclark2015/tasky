@@ -28,7 +28,7 @@ error: string | null
 |---|---|---|
 | `loadTasks` | `(adapter) => Promise<void>` | Fetches all tasks via repo, builds Map |
 | `createTask` | `(adapter, partial: Partial<Task> & { title }) => Promise<Task>` | Generates UUID, defaults priority=medium, completed=false, syncStatus=pending |
-| `updateTask` | `(adapter, id, updates: Partial<Task>) => Promise<void>` | Auto-sets `syncStatus: 'pending'` for CalDAV-linked tasks (has `caldavUid`) unless caller explicitly sets syncStatus |
+| `updateTask` | `(adapter, id, updates: Partial<Task>) => Promise<void>` | Auto-sets `syncStatus: 'pending'` for remote-linked tasks (has `remoteId`) unless caller explicitly sets syncStatus |
 | `deleteTask` | `(adapter, id) => Promise<void>` | Recursively collects all descendant IDs, deletes via repo (SQL ON DELETE CASCADE), removes from Map |
 | `toggleComplete` | `(adapter, id) => Promise<void>` | Toggles `completed`, sets/clears `completedAt` timestamp |
 | `getTasksByList` | `(listId) => Task[]` | Returns root tasks (parentId===null) for a given list |
@@ -55,7 +55,7 @@ error: string | null
 | Action | Signature | Key Logic |
 |---|---|---|
 | `loadLists` | `(adapter) => Promise<void>` | Fetches all lists ordered by name |
-| `createList` | `(adapter, name, color?) => Promise<TaskList>` | Generates UUID, sets `caldavUrl: null` |
+| `createList` | `(adapter, name, color?) => Promise<TaskList>` | Generates UUID, sets `remoteUrl: null` |
 | `updateList` | `(adapter, id, updates: Partial<TaskList>) => Promise<void>` | Partial update, bumps `updatedAt` |
 | `deleteList` | `(adapter, id) => Promise<void>` | Deletes from DB, filters from array |
 
@@ -94,18 +94,16 @@ syncIntervalMinutes: SyncInterval // default null (disabled)
 
 ---
 
-## useSyncStore (src/stores/sync.ts) -- 689 lines
+## useSyncStore (src/stores/sync.ts) -- ~464 lines
+
+**Unified, provider-agnostic sync store (Phase 6 rewrite).**
 
 **State:**
 
 ```typescript
-// CalDAV
-accounts: CalDavAccount[]
-calendarMaps: CalDavCalendarMap[]
-
-// GitHub
-githubAccounts: GitHubAccount[]
-githubRepoMaps: GitHubRepoMap[]
+// Unified state (replaces separate CalDAV + GitHub state)
+accounts: ProviderAccount[]
+maps: ProviderMap[]
 
 // Shared sync status
 syncStatus: 'idle' | 'syncing' | 'error' | 'success'
@@ -118,33 +116,29 @@ isSyncing: boolean
 
 | Action | Signature | Key Logic |
 |---|---|---|
-| `loadAccounts` | `(adapter) => Promise<void>` | Loads all 4 tables in parallel (CalDAV accounts, maps, GitHub accounts, repo maps) |
-| `syncAll` | `(adapter, tasks, lists, onTasksChanged, onListsChanged) => Promise<void>` | Guards against concurrent sync, iterates all enabled accounts |
-| `syncPending` | `(adapter, pendingListIds, tasks, lists, ...) => Promise<void>` | Targeted sync for specific lists; skips if all pending tasks are Inbox (local-only) |
-| `syncAccount` | `(adapter, accountId, tasks, lists, ...) => Promise<SyncResult>` | Core CalDAV sync: fetch remote -> push pending -> delete -> merge results |
-| `syncGitHubAccount` | `(adapter, accountId, tasks, ...) => Promise<SyncResult>` | GitHub sync (issues) |
-| `addAccount` / `updateAccount` / `deleteAccount` | CalDAV account CRUD |
-| `addGitHubAccount` / `updateGitHubAccount` / `deleteGitHubAccount` | GitHub account CRUD |
-| `testConnection` / `testGitHubConnection` | Test server connectivity |
-| `discoverCalendars` / `discoverGitHubRepos` | Discover available calendars/repos |
-| `linkCalendar` / `unlinkCalendar` | Link/unlink CalDAV calendars to lists |
-| `linkGitHubRepo` / `unlinkGitHubRepo` | Link/unlink GitHub repos to lists |
-| `updateGitHubRepoMap` | `(adapter, listId, {query?, readOnly?}) => Promise<void>` | Update per-repo settings |
+| `loadAccounts` | `(adapter) => Promise<void>` | Loads provider_accounts + provider_maps tables |
+| `addAccount` | `(adapter, providerType, displayName, credentials) => Promise<ProviderAccount>` | Inserts into provider_accounts |
+| `updateAccount` | `(adapter, id, updates) => Promise<void>` | Partial update |
+| `deleteAccount` | `(adapter, id) => Promise<void>` | Cascade-deletes maps too |
+| `testConnection` | `(providerType, credentials) => Promise<{ok, error?}>` | Calls `providerTestConnection` IPC |
+| `discoverSources` | `(providerType, credentials) => Promise<ProviderCalendar[]>` | Calls `providerDiscover` IPC |
+| `linkSource` | `(adapter, accountId, sourceId, sourceName, listId, settings) => Promise<void>` | Inserts into provider_maps |
+| `unlinkSource` | `(adapter, mapId) => Promise<void>` | Deletes map by `map.id` (not listId) |
+| `updateMap` | `(adapter, mapId, settings) => Promise<void>` | Updates map settings JSON |
+| `syncAccount` | `(adapter, accountId, tasks, lists, ...) => Promise<SyncResult>` | Unified sync for any provider: builds config as `{...account.credentials, ...map.settings}`, dispatches to Rust |
+| `syncAll` | `(adapter, tasks, lists, onTasksChanged, onListsChanged) => Promise<void>` | Guards against concurrent sync, iterates enabled accounts |
+| `syncPending` | `(adapter, pendingListIds, tasks, lists, ...) => Promise<void>` | Targeted sync for specific lists |
 
-### Sync algorithm (CalDAV)
+### Sync algorithm (unified)
 
-1. Filter tasks by list IDs matching calendar maps
-2. Extract pending root tasks (parentId===null, syncStatus==='pending')
-3. Build `TaskPushInput[]`, call `providerSync('caldav', ...)`
-4. Process push results: update local tasks with `caldavUid`, `etag`, `syncStatus:'synced'`
-5. Track `justPushedUids` to avoid duplicate creation
-6. Process remote tasks: update existing (skip if same etag, mark conflict if pending), create new
-7. Skip events-only calendar maps
+1. Filter maps for the given account
+2. For each map with a listId: filter tasks by listId, extract pending root tasks
+3. Build config: `{ ...account.credentials, ...map.settings }` (CalDAV: server_url+username+password+events_only+sync_token; GitHub: token+query+read_only)
+4. Call `providerSync(account.providerType, config, ...)`
+5. Process push results: update local tasks with `remoteId`, `etag`, `syncStatus:'synced'`
+6. Process remote tasks: update existing (skip same etag, mark conflict if pending), create new
+7. Skip events-only maps (listId===null)
 8. Update `lastSyncedAt`, call `onTasksChanged()` callback
-
-### GitHub sync
-
-Nearly identical to CalDAV, but reuses `caldavUid` for issue numbers, `etag` for `updated_at`. Config includes `query` and `read_only`.
 
 ### Helper functions (private)
 

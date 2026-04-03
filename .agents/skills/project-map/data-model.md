@@ -23,7 +23,7 @@ interface Task {
   timeSpent: number
   notes: string
   etag: string | null            // CalDAV ETag or GitHub updated_at
-  caldavUid: string | null       // CalDAV UID or GitHub issue number
+  remoteId: string | null        // CalDAV UID or GitHub issue number (was caldavUid)
   syncStatus: 'synced' | 'pending' | 'conflict'
   sourceEventUid: string | null  // links task to originating calendar event
 }
@@ -41,34 +41,35 @@ interface TaskList {
   id: string
   name: string
   color: string | null
-  caldavUrl: string | null
+  remoteUrl: string | null       // formerly caldavUrl
   createdAt: string
   updatedAt: string
 }
 
-interface CalDavAccount {
-  id: string; displayName: string; serverUrl: string
-  username: string; password: string
-  lastSyncedAt: string | null; syncEnabled: boolean
-  createdAt: string; updatedAt: string
+// Unified provider account (replaces CalDavAccount + GitHubAccount)
+interface ProviderAccount {
+  id: string
+  providerType: string           // 'caldav' | 'github'
+  displayName: string
+  credentials: Record<string, unknown>  // CalDAV: {server_url, username, password}; GitHub: {token}
+  lastSyncedAt: string | null
+  syncEnabled: boolean
+  createdAt: string
+  updatedAt: string
 }
 
-interface CalDavCalendarMap {
-  listId: string; accountId: string; calendarHref: string
-  eventsOnly: boolean; syncToken: string | null
-  createdAt: string; updatedAt: string
-}
+type NewProviderAccount = Omit<ProviderAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>
 
-interface GitHubAccount {
-  id: string; displayName: string; token: string
-  lastSyncedAt: string | null; syncEnabled: boolean
-  createdAt: string; updatedAt: string
-}
-
-interface GitHubRepoMap {
-  listId: string; accountId: string; repoFullName: string
-  query: string | null; readOnly: boolean | null
-  createdAt: string; updatedAt: string
+// Unified provider map (replaces CalDavCalendarMap + GitHubRepoMap)
+interface ProviderMap {
+  id: string                     // own PK (not listId)
+  accountId: string
+  listId: string | null          // null for events_only maps
+  sourceId: string               // calendarHref (CalDAV) or repoFullName (GitHub)
+  sourceName: string | null      // display name from discovery
+  settings: Record<string, unknown>  // CalDAV: {events_only, sync_token}; GitHub: {query, read_only}
+  createdAt: string
+  updatedAt: string
 }
 
 interface CalendarEvent {
@@ -76,16 +77,11 @@ interface CalendarEvent {
   description: string | null; dtstart: string | null
   dtend: string | null; location: string | null; color: string | null
 }
-
-interface SyncResult {
-  accountId: string; created: number; updated: number
-  deleted: number; conflicts: number; errors: string[]
-}
 ```
 
 ### Derived Types
 
-`NewTask`, `NewTaskList`, `NewCalDavAccount`, `NewGitHubAccount` are `Omit<...>` variants stripping auto-generated fields (`id`, `createdAt`, `updatedAt`, `syncStatus`, etc.).
+`NewTask`, `NewTaskList`, `NewProviderAccount` are `Omit<...>` variants stripping auto-generated fields.
 
 ### AppSettings
 
@@ -102,7 +98,7 @@ interface AppSettings {
 
 ## SQL Schema (src/db/migrations/index.ts)
 
-9 migrations total (v1-v9). Key tables:
+10 migrations total (v1-v10). Key tables:
 
 ### tasks
 
@@ -126,12 +122,12 @@ time_estimate    INTEGER                    -- minutes
 time_spent       INTEGER DEFAULT 0          -- minutes
 notes            TEXT DEFAULT ''
 etag             TEXT                       -- CalDAV ETag
-caldav_uid       TEXT                       -- CalDAV UID or GitHub issue number
+remote_id        TEXT                       -- CalDAV UID or GitHub issue number (was caldav_uid)
 sync_status      TEXT DEFAULT 'pending'
 source_event_uid TEXT                       -- links task to originating calendar event
 ```
 
-Indexes: `idx_tasks_list_id`, `idx_tasks_parent_id`, `idx_tasks_due_date`, `idx_tasks_completed`, `idx_tasks_caldav_uid`, `idx_tasks_sync_status`, `idx_tasks_source_event_uid`, `idx_tasks_caldav_uid2`
+Indexes: `idx_tasks_list_id`, `idx_tasks_parent_id`, `idx_tasks_due_date`, `idx_tasks_completed`, `idx_tasks_remote_id`, `idx_tasks_sync_status`, `idx_tasks_source_event_uid`
 
 ### lists
 
@@ -139,7 +135,7 @@ Indexes: `idx_tasks_list_id`, `idx_tasks_parent_id`, `idx_tasks_due_date`, `idx_
 id          TEXT PRIMARY KEY
 name        TEXT NOT NULL
 color       TEXT
-caldav_url  TEXT
+remote_url  TEXT                  -- was caldav_url
 created_at  TEXT NOT NULL
 updated_at  TEXT NOT NULL
 ```
@@ -151,59 +147,33 @@ key   TEXT PRIMARY KEY
 value TEXT
 ```
 
-### caldav_accounts
+### provider_accounts (replaces caldav_accounts + github_accounts)
 
 ```sql
 id              TEXT PRIMARY KEY
+provider_type   TEXT NOT NULL     -- 'caldav' | 'github'
 display_name    TEXT NOT NULL
-server_url      TEXT NOT NULL
-username        TEXT NOT NULL
-password        TEXT NOT NULL
+credentials     TEXT NOT NULL     -- JSON: {server_url,username,password} or {token}
 last_synced_at  TEXT
 sync_enabled    INTEGER DEFAULT 1
 created_at      TEXT NOT NULL
 updated_at      TEXT NOT NULL
 ```
 
-### caldav_calendar_map
+### provider_maps (replaces caldav_calendar_map + github_repo_map)
 
 ```sql
-list_id        TEXT PRIMARY KEY          -- no FK constraint (v9)
-account_id     TEXT NOT NULL REFERENCES caldav_accounts(id) ON DELETE CASCADE
-calendar_href  TEXT NOT NULL
-events_only    INTEGER NOT NULL DEFAULT 0
-sync_token     TEXT
-created_at     TEXT NOT NULL
-updated_at     TEXT NOT NULL
+id           TEXT PRIMARY KEY
+account_id   TEXT NOT NULL REFERENCES provider_accounts(id) ON DELETE CASCADE
+list_id      TEXT                  -- nullable (NULL for events_only)
+source_id    TEXT NOT NULL         -- calendarHref or repoFullName
+source_name  TEXT
+settings     TEXT NOT NULL DEFAULT '{}'  -- JSON: {events_only, sync_token} or {query, read_only}
+created_at   TEXT NOT NULL
+updated_at   TEXT NOT NULL
 ```
 
-Index: `idx_caldav_calendar_map_account_id`
-
-### github_accounts
-
-```sql
-id              TEXT PRIMARY KEY
-display_name    TEXT NOT NULL
-token           TEXT NOT NULL
-last_synced_at  TEXT
-sync_enabled    INTEGER DEFAULT 1
-created_at      TEXT NOT NULL
-updated_at      TEXT NOT NULL
-```
-
-### github_repo_map
-
-```sql
-list_id         TEXT PRIMARY KEY REFERENCES lists(id) ON DELETE CASCADE
-account_id      TEXT NOT NULL REFERENCES github_accounts(id) ON DELETE CASCADE
-repo_full_name  TEXT NOT NULL
-query           TEXT
-read_only       INTEGER
-created_at      TEXT NOT NULL
-updated_at      TEXT NOT NULL
-```
-
-Index: `idx_github_repo_map_account_id`
+Index: `idx_provider_maps_account_id`, `idx_provider_maps_list_id`
 
 ### schema_migrations
 

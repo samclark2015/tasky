@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tasky_providers::{ProviderCalendar, ProviderEvent, SyncOutput, TaskDeleteInput, TaskPushInput};
+use tasky_providers::{ProviderCalendar, ProviderEvent, ProviderMetadata, SyncOutput, TaskDeleteInput, TaskPushInput};
 
 #[derive(Debug, Serialize)]
 pub struct ConnectionResult {
@@ -74,4 +74,14 @@ pub async fn fetch_events(
         Ok(events) => Ok(FetchEventsResult { events, error: None }),
         Err(e) => Ok(FetchEventsResult { events: vec![], error: Some(e) }),
     }
+}
+
+#[tauri::command]
+pub fn list_providers() -> Vec<ProviderMetadata> {
+    tasky_providers::dispatch::list_providers()
+}
+
+#[tauri::command]
+pub fn get_provider_metadata(provider: String) -> Result<ProviderMetadata, String> {
+    tasky_providers::dispatch::provider_metadata(&provider)
 }

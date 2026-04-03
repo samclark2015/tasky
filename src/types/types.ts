@@ -25,7 +25,7 @@ export interface Task {
   timeSpent: number;
   notes: string;
   etag: string | null;
-  caldavUid: string | null;
+  remoteId: string | null;
   syncStatus: 'synced' | 'pending' | 'conflict';
   sourceEventUid: string | null;
 }
@@ -36,7 +36,7 @@ export interface TaskList {
   id: string;
   name: string;
   color: string | null;
-  caldavUrl: string | null;
+  remoteUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -50,46 +50,33 @@ export interface AppSettings {
   defaultListId: string | null;
 }
 
-export interface CalDavAccount {
+// ── Generic provider types ───────────────────────────────────────────────────
+
+export interface ProviderAccount {
   id: string;
+  providerType: string;
   displayName: string;
-  serverUrl: string;
-  username: string;
-  password: string;
+  credentials: Record<string, unknown>;
   lastSyncedAt: string | null;
   syncEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-export type NewCalDavAccount = Omit<CalDavAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>;
+export type NewProviderAccount = Omit<ProviderAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>;
 
-export interface CalDavCalendarMap {
-  listId: string;
+export interface ProviderMap {
+  id: string;
   accountId: string;
-  calendarHref: string;
-  /** When true this calendar is fetched for events only — no list is created and VTODOs are not synced. */
-  eventsOnly: boolean;
-  syncToken: string | null;
+  listId: string | null;
+  sourceId: string;
+  sourceName: string | null;
+  settings: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface DiscoveredCalendar {
-  href: string;
-  displayName: string | null;
-  color: string | null;
-  supportsSync: boolean;
-}
-
-export interface SyncResult {
-  accountId: string;
-  created: number;
-  updated: number;
-  deleted: number;
-  conflicts: number;
-  errors: string[];
-}
+// ── CalendarEvent (kept for calendar view) ───────────────────────────────────
 
 export interface CalendarEvent {
   uid: string;
@@ -100,34 +87,4 @@ export interface CalendarEvent {
   dtend: string | null;
   location: string | null;
   color: string | null;
-}
-
-export interface GitHubAccount {
-  id: string;
-  displayName: string;
-  /** Personal Access Token (stored plaintext for MVP; encrypt before shipping) */
-  token: string;
-  lastSyncedAt: string | null;
-  syncEnabled: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type NewGitHubAccount = Omit<GitHubAccount, 'id' | 'lastSyncedAt' | 'createdAt' | 'updatedAt'>;
-
-export interface GitHubRepoMap {
-  /** listId is the PK — one list maps to one repo */
-  listId: string;
-  accountId: string;
-  /** Full repository name, e.g. "owner/repo" */
-  repoFullName: string;
-  /**
-   * Issue search query for this repo.
-   * null = use the default ("assignee:@me is:open").
-   */
-  query: string | null;
-  /** When true, sync only pulls issues in — no push or delete back to GitHub. */
-  readOnly: boolean;
-  createdAt: string;
-  updatedAt: string;
 }

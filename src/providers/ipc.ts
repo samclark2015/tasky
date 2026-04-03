@@ -11,6 +11,9 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   ProviderCalendar,
   ProviderEvent,
+  ProviderFieldDef,
+  ProviderMapFieldDef,
+  ProviderMetadata,
   ProviderTask,
   PushResult,
   SyncOutput,
@@ -211,4 +214,80 @@ export async function providerFetchEvents(
     },
   );
   return result.events.map(fromWireEvent);
+}
+
+// ── Provider Metadata ─────────────────────────────────────────────────────────
+
+interface WireProviderFieldDef {
+  key: string;
+  label: string;
+  field_type: string;
+  required: boolean;
+  placeholder: string | null;
+  help_text: string | null;
+}
+
+interface WireProviderMapFieldDef {
+  key: string;
+  label: string;
+  field_type: string;
+  default_value: unknown;
+  help_text: string | null;
+}
+
+interface WireProviderMetadata {
+  id: string;
+  display_name: string;
+  icon: string;
+  description: string;
+  credential_fields: WireProviderFieldDef[];
+  map_fields: WireProviderMapFieldDef[];
+  source_noun: string;
+  source_noun_plural: string;
+  supports_events: boolean;
+}
+
+function fromWireFieldDef(w: WireProviderFieldDef): ProviderFieldDef {
+  return {
+    key: w.key,
+    label: w.label,
+    fieldType: w.field_type,
+    required: w.required,
+    placeholder: w.placeholder,
+    helpText: w.help_text,
+  };
+}
+
+function fromWireMapFieldDef(w: WireProviderMapFieldDef): ProviderMapFieldDef {
+  return {
+    key: w.key,
+    label: w.label,
+    fieldType: w.field_type,
+    defaultValue: w.default_value,
+    helpText: w.help_text,
+  };
+}
+
+function fromWireMetadata(w: WireProviderMetadata): ProviderMetadata {
+  return {
+    id: w.id,
+    displayName: w.display_name,
+    icon: w.icon,
+    description: w.description,
+    credentialFields: w.credential_fields.map(fromWireFieldDef),
+    mapFields: w.map_fields.map(fromWireMapFieldDef),
+    sourceNoun: w.source_noun,
+    sourceNounPlural: w.source_noun_plural,
+    supportsEvents: w.supports_events,
+  };
+}
+
+export async function providerListProviders(): Promise<ProviderMetadata[]> {
+  const result = await invoke<WireProviderMetadata[]>('list_providers');
+  return result.map(fromWireMetadata);
+}
+
+export async function providerGetMetadata(providerId: string): Promise<ProviderMetadata> {
+  const result = await invoke<WireProviderMetadata>('get_provider_metadata', { provider: providerId });
+  return fromWireMetadata(result);
 }

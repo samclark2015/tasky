@@ -14,8 +14,8 @@ use tower_http::auth::AddAuthorization;
 use tower_service::Service;
 
 use crate::{
-    ProviderCalendar, ProviderEvent, ProviderTask, PushResult, SyncOutput, SyncProvider,
-    TaskDeleteInput, TaskPushInput,
+    ProviderCalendar, ProviderEvent, ProviderFieldDef, ProviderMapFieldDef, ProviderMetadata,
+    ProviderTask, PushResult, SyncOutput, SyncProvider, TaskDeleteInput, TaskPushInput,
 };
 
 // ── Internal HTTP client ──────────────────────────────────────────────────────
@@ -68,6 +68,53 @@ pub struct CalDavProvider;
 impl SyncProvider for CalDavProvider {
     fn provider_id() -> &'static str {
         "caldav"
+    }
+
+    fn metadata() -> ProviderMetadata {
+        ProviderMetadata {
+            id: "caldav".to_string(),
+            display_name: "CalDAV".to_string(),
+            icon: "wifi".to_string(),
+            description: "Sync tasks with any CalDAV-compatible server (Nextcloud, Fastmail, iCloud, etc.)".to_string(),
+            credential_fields: vec![
+                ProviderFieldDef {
+                    key: "server_url".to_string(),
+                    label: "Server URL".to_string(),
+                    field_type: "url".to_string(),
+                    required: true,
+                    placeholder: Some("https://dav.example.com".to_string()),
+                    help_text: Some("The base URL of your CalDAV server".to_string()),
+                },
+                ProviderFieldDef {
+                    key: "username".to_string(),
+                    label: "Username".to_string(),
+                    field_type: "text".to_string(),
+                    required: true,
+                    placeholder: Some("your@email.com".to_string()),
+                    help_text: None,
+                },
+                ProviderFieldDef {
+                    key: "password".to_string(),
+                    label: "Password".to_string(),
+                    field_type: "password".to_string(),
+                    required: true,
+                    placeholder: None,
+                    help_text: Some("App-specific password recommended".to_string()),
+                },
+            ],
+            map_fields: vec![
+                ProviderMapFieldDef {
+                    key: "events_only".to_string(),
+                    label: "Events only (no tasks)".to_string(),
+                    field_type: "boolean".to_string(),
+                    default_value: Some(serde_json::Value::Bool(false)),
+                    help_text: Some("Only fetch calendar events, do not sync tasks".to_string()),
+                },
+            ],
+            source_noun: "calendar".to_string(),
+            source_noun_plural: "calendars".to_string(),
+            supports_events: true,
+        }
     }
 
     async fn test_connection(config: &serde_json::Value) -> Result<bool, String> {

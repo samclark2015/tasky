@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ViewHeader } from '@/components/layout/view-header';
 import { useApp } from '@/components/app-provider';
 import { useTaskStore, useListStore, useSyncStore, useUIStore } from '@/stores';
 import type { SyncInterval } from '@/stores';
-import type { CalDavAccount, GitHubAccount, GitHubRepoMap, TaskList } from '@/types';
-import type { ProviderCalendar } from '@/providers/types';
+import type { ProviderAccount, ProviderMap, TaskList } from '@/types';
+import type { ProviderCalendar, ProviderMetadata } from '@/providers/types';
+import { providerListProviders } from '@/providers/ipc';
 import {
   Wifi,
   WifiOff,
+  Cloud,
   Plus,
   Trash2,
   RefreshCw,
@@ -19,32 +21,51 @@ import {
   X,
   Link,
   Unlink,
-  Github,
   Calendar,
+  Github,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type EditingAccount =
-  | { type: 'caldav'; account: CalDavAccount }
-  | { type: 'github'; account: GitHubAccount }
-  | null;
+// ── Dynamic icon lookup ───────────────────────────────────────────────────────
+
+type LucideComponent = React.ComponentType<{ className?: string }>;
+
+const ICON_MAP: Record<string, LucideComponent> = {
+  wifi: Wifi,
+  github: Github,
+  cloud: Cloud,
+};
+
+function ProviderIcon({ name, className }: { name: string; className?: string }) {
+  const Icon = ICON_MAP[name] ?? Cloud;
+  return <Icon className={className} />;
+}
+
+// ── SettingsView ──────────────────────────────────────────────────────────────
 
 export function SettingsView() {
   const { adapter } = useApp();
   const {
-    accounts, calendarMaps,
-    githubAccounts, githubRepoMaps,
+    accounts, maps,
     syncStatus, lastSyncAt, lastSyncError, isSyncing,
-    syncAll, deleteAccount, deleteGitHubAccount,
+    syncAll, deleteAccount,
   } = useSyncStore();
   const { tasks } = useTaskStore();
   const { lists } = useListStore();
-  const [panel, setPanel] = useState<'add-caldav' | 'add-github' | null>(null);
-  const [editingAccount, setEditingAccount] = useState<EditingAccount>(null);
-
   const { syncIntervalMinutes, setSyncInterval } = useUIStore();
 
-  const hasAnyAccount = accounts.length > 0 || githubAccounts.length > 0;
+  const [providers, setProviders] = useState<ProviderMetadata[]>([]);
+  const [addingProviderType, setAddingProviderType] = useState<string | null>(null);
+  const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
+
+  // Load provider metadata once on mount.
+  useEffect(() => {
+    providerListProviders().then(setProviders).catch(console.error);
+  }, []);
+
+  function getMetadata(providerType: string): ProviderMetadata | null {
+    return providers.find((p) => p.id === providerType) ?? null;
+  }
 
   function handleSync() {
     if (!adapter) return;
@@ -61,7 +82,7 @@ export function SettingsView() {
     <div className="flex flex-col h-full overflow-hidden">
       <ViewHeader
         actions={
-          hasAnyAccount ? (
+          accounts.length > 0 ? (
             <button
               onClick={handleSync}
               disabled={isSyncing}
@@ -99,7 +120,7 @@ export function SettingsView() {
           </div>
         )}
 
-        {/* ── Sync ─────────────────────────────────────────────────────────── */}
+        {/* ── Sync interval ───────────────────────────────────────────────── */}
         <section>
           <h2 className="text-sm font-semibold text-foreground mb-3">Sync</h2>
           <div className="flex items-center justify-between">
@@ -148,7 +169,7 @@ export function SettingsView() {
           </div>
         </section>
 
-        {/* ── Accounts ─────────────────────────────────────────────────────── */}
+        {/* ── Accounts ────────────────────────────────────────────────────── */}
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
@@ -166,231 +187,158 @@ export function SettingsView() {
                   sideOffset={4}
                   className="z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md"
                 >
-                  <DropdownMenu.Item
-                    onSelect={() => { setEditingAccount(null); setPanel('add-caldav'); }}
-                    className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
-                  >
-                    <Wifi className="h-3.5 w-3.5 text-muted-foreground" />
-                    CalDAV Account
-                  </DropdownMenu.Item>
-                  <DropdownMenu.Item
-                    onSelect={() => { setEditingAccount(null); setPanel('add-github'); }}
-                    className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
-                  >
-                    <Github className="h-3.5 w-3.5 text-muted-foreground" />
-                    GitHub Account
-                  </DropdownMenu.Item>
+                  {providers.map((p) => (
+                    <DropdownMenu.Item
+                      key={p.id}
+                      onSelect={() => { setEditingAccount(null); setAddingProviderType(p.id); }}
+                      className="flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer outline-none data-[highlighted]:bg-accent"
+                    >
+                      <ProviderIcon name={p.icon} className="h-3.5 w-3.5 text-muted-foreground" />
+                      {p.displayName} Account
+                    </DropdownMenu.Item>
+                  ))}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
           </div>
 
-          {!hasAnyAccount && (
+          {accounts.length === 0 && (
             <div className="text-center py-8 text-sm text-muted-foreground">
               <div className="flex items-center justify-center gap-3 mb-2 opacity-30">
-                <Wifi className="h-7 w-7" />
-                <Github className="h-7 w-7" />
+                {providers.length > 0 ? (
+                  providers.map((p) => (
+                    <ProviderIcon key={p.id} name={p.icon} className="h-7 w-7" />
+                  ))
+                ) : (
+                  <Cloud className="h-7 w-7" />
+                )}
               </div>
               <p>No accounts connected.</p>
-              <p className="text-xs mt-1">Add a CalDAV or GitHub account to start syncing.</p>
+              <p className="text-xs mt-1">Add an account to start syncing.</p>
             </div>
           )}
 
-          {accounts.map((account) => (
-            <CalDavAccountRow
-              key={account.id}
-              account={account}
-              calendarMaps={calendarMaps}
-              lists={lists}
-              onEdit={() => setEditingAccount({ type: 'caldav', account })}
-              onDelete={() => adapter && deleteAccount(adapter, account.id)}
-            />
-          ))}
-
-          {adapter && githubAccounts.map((account) => (
-            <GitHubAccountRow
-              key={account.id}
-              account={account}
-              repoMaps={githubRepoMaps}
-              lists={lists}
-              adapter={adapter}
-              onEdit={() => setEditingAccount({ type: 'github', account })}
-              onDelete={() => deleteGitHubAccount(adapter, account.id)}
-            />
-          ))}
+          {adapter && accounts.map((account) => {
+            const metadata = getMetadata(account.providerType);
+            if (!metadata) return null;
+            return (
+              <ProviderAccountRow
+                key={account.id}
+                account={account}
+                metadata={metadata}
+                maps={maps.filter((m) => m.accountId === account.id)}
+                lists={lists}
+                adapter={adapter}
+                onEdit={() => setEditingAccount(account)}
+                onDelete={() => deleteAccount(adapter, account.id)}
+              />
+            );
+          })}
         </section>
       </div>
 
       {/* Add account modal */}
-      {panel !== null && !editingAccount && adapter && (
-        <AddAccountModal
-          type={panel === 'add-caldav' ? 'caldav' : 'github'}
-          adapter={adapter}
-          lists={lists}
-          calendarMaps={calendarMaps}
-          repoMaps={githubRepoMaps}
-          onClose={() => setPanel(null)}
-        />
-      )}
+      {addingProviderType !== null && !editingAccount && adapter && (() => {
+        const metadata = getMetadata(addingProviderType);
+        if (!metadata) return null;
+        return (
+          <AccountModal
+            title={`Add ${metadata.displayName} Account`}
+            onClose={() => setAddingProviderType(null)}
+          >
+            <AddAccountForm
+              key={`new-${addingProviderType}`}
+              existing={null}
+              providerType={addingProviderType}
+              metadata={metadata}
+              adapter={adapter}
+              maps={maps}
+              lists={lists}
+              onDone={() => setAddingProviderType(null)}
+            />
+          </AccountModal>
+        );
+      })()}
 
       {/* Edit account modal */}
-      {editingAccount && adapter && (
-        <EditAccountModal
-          editingAccount={editingAccount}
-          adapter={adapter}
-          lists={lists}
-          calendarMaps={calendarMaps}
-          repoMaps={githubRepoMaps}
-          onClose={() => setEditingAccount(null)}
-        />
-      )}
+      {editingAccount && adapter && (() => {
+        const metadata = getMetadata(editingAccount.providerType);
+        if (!metadata) return null;
+        return (
+          <AccountModal
+            title={`Edit ${metadata.displayName} Account`}
+            onClose={() => setEditingAccount(null)}
+          >
+            <AddAccountForm
+              key={editingAccount.id}
+              existing={editingAccount}
+              providerType={editingAccount.providerType}
+              metadata={metadata}
+              adapter={adapter}
+              maps={maps}
+              lists={lists}
+              onDone={() => setEditingAccount(null)}
+            />
+          </AccountModal>
+        );
+      })()}
     </div>
   );
 }
 
-// ── CalDavAccountRow ──────────────────────────────────────────────────────────
+// ── AccountModal wrapper ──────────────────────────────────────────────────────
 
-function CalDavAccountRow({
-  account,
-  calendarMaps,
-  lists,
-  onEdit,
-  onDelete,
+function AccountModal({
+  title,
+  onClose,
+  children,
 }: {
-  account: CalDavAccount;
-  calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
-  lists: TaskList[];
-  onEdit: () => void;
-  onDelete: () => void;
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const myMaps = calendarMaps.filter((m) => m.accountId === account.id);
-
   return (
-    <div className="border border-border rounded-md mb-2 overflow-hidden">
-      <button
-        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <Wifi className="h-4 w-4 text-primary flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{account.displayName}</p>
-          <p className="text-xs text-muted-foreground truncate">{account.lastSyncedAt ? `Last synced ${new Date(account.lastSyncedAt).toLocaleTimeString()}` : 'Never synced'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{myMaps.length} calendar{myMaps.length !== 1 ? 's' : ''}</span>
-          {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-border bg-muted/20 px-3 py-2 space-y-1.5">
-          {myMaps.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-1">No calendars linked.</p>
-          ) : (
-            myMaps.map((m) => {
-              const list = lists.find((l) => l.id === m.listId);
-              return (
-                <div key={m.listId} className="flex items-center gap-2 text-xs">
-                  {list && (
-                    <span
-                      className="h-2 w-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: list.color ?? '#6366f1' }}
-                    />
-                  )}
-                  <span className="flex-1 truncate text-muted-foreground">
-                    {list?.name ?? m.listId}
-                  </span>
-                  <span className="text-muted-foreground/60 truncate max-w-[180px]">{m.calendarHref}</span>
-                </div>
-              );
-            })
-          )}
-          <div className="flex gap-2 pt-1">
-            <button onClick={onEdit} className="text-xs text-primary hover:underline">Edit</button>
-            <button onClick={onDelete} className="text-xs text-destructive hover:underline flex items-center gap-1">
-              <Trash2 className="h-3 w-3" /> Remove
-            </button>
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
+        >
+          <Dialog.Title className="sr-only">{title}</Dialog.Title>
+          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
+            <div className="p-4">{children}</div>
           </div>
-        </div>
-      )}
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
-// ── GitHubAccountRow ──────────────────────────────────────────────────────────
+// ── ProviderAccountRow ────────────────────────────────────────────────────────
 
-function RepoSettingsInline({
-  map,
-  adapter,
-}: {
-  map: GitHubRepoMap;
-  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
-}) {
-  const { updateGitHubRepoMap } = useSyncStore();
-  const [query, setQuery] = useState(map.query ?? '');
-  const [readOnly, setReadOnly] = useState(map.readOnly);
-
-  function handleQueryBlur() {
-    const trimmed = query.trim();
-    updateGitHubRepoMap(adapter, map.listId, { query: trimmed || null });
-  }
-
-  function handleReadOnlyChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const next = e.target.checked;
-    setReadOnly(next);
-    updateGitHubRepoMap(adapter, map.listId, { readOnly: next });
-  }
-
-  return (
-    <div className="mt-1.5 ml-4 space-y-1.5 pl-2 border-l border-border">
-      <div>
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onBlur={handleQueryBlur}
-          placeholder="assignee:@me is:open"
-          className="w-full text-xs border border-input rounded px-2 py-1 bg-background outline-none focus:ring-1 focus:ring-ring font-mono placeholder:text-muted-foreground/50"
-        />
-        <p className="text-xs text-muted-foreground mt-0.5">
-          GitHub search syntax. <code className="bg-muted px-0.5 rounded">repo:</code> and <code className="bg-muted px-0.5 rounded">is:issue</code> added automatically.
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          id={`ro-${map.listId}`}
-          type="checkbox"
-          checked={readOnly}
-          onChange={handleReadOnlyChange}
-          className="h-3.5 w-3.5 rounded border-input accent-primary"
-        />
-        <label htmlFor={`ro-${map.listId}`} className="text-xs text-muted-foreground cursor-pointer select-none">
-          Read-only — pull issues in only, never push changes back to GitHub
-        </label>
-      </div>
-    </div>
-  );
-}
-
-function GitHubAccountRow({
+function ProviderAccountRow({
   account,
-  repoMaps,
+  metadata,
+  maps,
   lists,
   adapter,
   onEdit,
   onDelete,
 }: {
-  account: GitHubAccount;
-  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
+  account: ProviderAccount;
+  metadata: ProviderMetadata;
+  maps: ProviderMap[];
   lists: TaskList[];
   adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [expandedRepo, setExpandedRepo] = useState<string | null>(null);
-  const myMaps = repoMaps.filter((m) => m.accountId === account.id);
+  const [expandedMapId, setExpandedMapId] = useState<string | null>(null);
+
+  const linkedMaps = maps.filter((m) => m.listId !== null);
+  const noun = linkedMaps.length === 1 ? metadata.sourceNoun : metadata.sourceNounPlural;
 
   return (
     <div className="border border-border rounded-md mb-2 overflow-hidden">
@@ -398,31 +346,34 @@ function GitHubAccountRow({
         className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
-        <Github className="h-4 w-4 text-primary flex-shrink-0" />
+        <ProviderIcon name={metadata.icon} className="h-4 w-4 text-primary flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{account.displayName}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground truncate">
             {account.lastSyncedAt
               ? `Last synced ${new Date(account.lastSyncedAt).toLocaleTimeString()}`
               : 'Never synced'}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{myMaps.length} repo{myMaps.length !== 1 ? 's' : ''}</span>
-          {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          <span className="text-xs text-muted-foreground">{linkedMaps.length} {noun}</span>
+          {expanded
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </div>
       </button>
 
       {expanded && (
         <div className="border-t border-border bg-muted/20 px-3 py-2 space-y-1.5">
-          {myMaps.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-1">No repositories linked.</p>
+          {maps.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-1">No {metadata.sourceNounPlural} linked.</p>
           ) : (
-            myMaps.map((m) => {
-              const list = lists.find((l) => l.id === m.listId);
-              const isRepoExpanded = expandedRepo === m.listId;
+            maps.map((m) => {
+              const list = m.listId ? lists.find((l) => l.id === m.listId) : null;
+              const isMapExpanded = expandedMapId === m.id;
+              const hasSettings = metadata.mapFields.length > 0 && m.listId !== null;
               return (
-                <div key={m.listId} className="text-xs">
+                <div key={m.id} className="text-xs">
                   <div className="flex items-center gap-2">
                     {list && (
                       <span
@@ -430,21 +381,31 @@ function GitHubAccountRow({
                         style={{ backgroundColor: list.color ?? '#6366f1' }}
                       />
                     )}
+                    {!list && !!m.settings.events_only && (
+                      <Calendar className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    )}
                     <span className="flex-1 truncate text-muted-foreground">
-                      {list?.name ?? m.listId}
+                      {list?.name ?? (m.settings.events_only ? 'Events only' : m.sourceId)}
                     </span>
-                    <span className="text-muted-foreground/60 truncate max-w-[140px]">{m.repoFullName}</span>
-                    <button
-                      onClick={() => setExpandedRepo(isRepoExpanded ? null : m.listId)}
-                      className="text-muted-foreground hover:text-foreground flex-shrink-0"
-                      title="Per-repo settings"
-                    >
-                      {isRepoExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                    </button>
+                    <span className="text-muted-foreground/60 truncate max-w-[160px]">
+                      {m.sourceName ?? m.sourceId}
+                    </span>
+                    {hasSettings && (
+                      <button
+                        onClick={() => setExpandedMapId(isMapExpanded ? null : m.id)}
+                        className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                        title="Per-source settings"
+                      >
+                        {isMapExpanded
+                          ? <ChevronDown className="h-3 w-3" />
+                          : <ChevronRight className="h-3 w-3" />}
+                      </button>
+                    )}
                   </div>
-                  {isRepoExpanded && (
-                    <RepoSettingsInline
+                  {isMapExpanded && hasSettings && (
+                    <SourceSettingsInline
                       map={m}
+                      fields={metadata.mapFields}
                       adapter={adapter}
                     />
                   )}
@@ -464,456 +425,205 @@ function GitHubAccountRow({
   );
 }
 
-// ── AddAccountModal ───────────────────────────────────────────────────────────
+// ── SourceSettingsInline ──────────────────────────────────────────────────────
 
-function AddAccountModal({
-  type,
+function SourceSettingsInline({
+  map,
+  fields,
   adapter,
-  lists,
-  calendarMaps,
-  repoMaps,
-  onClose,
 }: {
-  type: 'caldav' | 'github';
+  map: ProviderMap;
+  fields: ProviderMetadata['mapFields'];
   adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
-  lists: TaskList[];
-  calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
-  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
-  onClose: () => void;
 }) {
+  const { updateMap } = useSyncStore();
+  const [values, setValues] = useState<Record<string, unknown>>({ ...map.settings });
+
+  async function saveField(key: string, value: unknown) {
+    const next = { ...values, [key]: value };
+    setValues(next);
+    await updateMap(adapter, map.id, next);
+  }
+
+  // Only show user-facing fields (exclude internal keys like sync_token)
+  const userFields = fields.filter((f) => f.key !== 'sync_token');
+  if (userFields.length === 0) return null;
+
   return (
-    <Dialog.Root open onOpenChange={(open: boolean) => { if (!open) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
-        >
-          <Dialog.Title className="sr-only">
-            {type === 'caldav' ? 'Add CalDAV Account' : 'Add GitHub Account'}
-          </Dialog.Title>
-          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
-            <div className="p-4">
-              {type === 'caldav' ? (
-                <AddCalDavAccountForm
-                  key="new-caldav"
-                  existing={null}
-                  adapter={adapter}
-                  lists={lists}
-                  calendarMaps={calendarMaps}
-                  onDone={onClose}
-                  noBorder
-                />
-              ) : (
-                <AddGitHubAccountForm
-                  key="new-github"
-                  existing={null}
-                  adapter={adapter}
-                  repoMaps={repoMaps}
-                  onDone={onClose}
-                  noBorder
-                />
-              )}
+    <div className="mt-1.5 ml-4 space-y-1.5 pl-2 border-l border-border">
+      {userFields.map((field) => {
+        if (field.fieldType === 'boolean') {
+          const checked = Boolean(values[field.key] ?? field.defaultValue);
+          return (
+            <div key={field.key} className="flex items-center gap-2">
+              <input
+                id={`${map.id}-${field.key}`}
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => saveField(field.key, e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-input accent-primary"
+              />
+              <label
+                htmlFor={`${map.id}-${field.key}`}
+                className="text-xs text-muted-foreground cursor-pointer select-none"
+              >
+                {field.label}
+              </label>
             </div>
+          );
+        }
+        // text field
+        const textValue = String(values[field.key] ?? field.defaultValue ?? '');
+        return (
+          <div key={field.key}>
+            <input
+              type="text"
+              defaultValue={textValue}
+              onBlur={(e) => {
+                const trimmed = e.target.value.trim();
+                saveField(field.key, trimmed || (field.defaultValue ?? null));
+              }}
+              placeholder={String(field.defaultValue ?? '')}
+              className="w-full text-xs border border-input rounded px-2 py-1 bg-background outline-none focus:ring-1 focus:ring-ring font-mono placeholder:text-muted-foreground/50"
+            />
+            {field.helpText && (
+              <p className="text-xs text-muted-foreground mt-0.5">{field.helpText}</p>
+            )}
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        );
+      })}
+    </div>
   );
 }
 
-// ── EditAccountModal ──────────────────────────────────────────────────────────
+// ── AddAccountForm ────────────────────────────────────────────────────────────
 
-function EditAccountModal({
-  editingAccount,
-  adapter,
-  lists,
-  calendarMaps,
-  repoMaps,
-  onClose,
-}: {
-  editingAccount: NonNullable<EditingAccount>;
-  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
-  lists: TaskList[];
-  calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
-  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
-  onClose: () => void;
-}) {
-  return (
-    <Dialog.Root open onOpenChange={(open: boolean) => { if (!open) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
-        >
-          <Dialog.Title className="sr-only">
-            {editingAccount.type === 'caldav' ? 'Edit CalDAV Account' : 'Edit GitHub Account'}
-          </Dialog.Title>
-          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
-            <div className="p-4">
-              {editingAccount.type === 'caldav' ? (
-                <AddCalDavAccountForm
-                  key={editingAccount.account.id}
-                  existing={editingAccount.account}
-                  adapter={adapter}
-                  lists={lists}
-                  calendarMaps={calendarMaps}
-                  onDone={onClose}
-                  noBorder
-                />
-              ) : (
-                <AddGitHubAccountForm
-                  key={editingAccount.account.id}
-                  existing={editingAccount.account}
-                  adapter={adapter}
-                  repoMaps={repoMaps}
-                  onDone={onClose}
-                  noBorder
-                />
-              )}
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
+type FormStep = 'credentials' | 'sources';
 
-// ── AddCalDavAccountForm ─────────────────────────────────────────────────────
-
-type CalDavFormStep = 'credentials' | 'testing' | 'calendars';
-
-function AddCalDavAccountForm({
+function AddAccountForm({
   existing,
+  providerType,
+  metadata,
   adapter,
+  maps,
   lists,
-  calendarMaps,
   onDone,
-  noBorder,
 }: {
-  existing: CalDavAccount | null;
+  existing: ProviderAccount | null;
+  providerType: string;
+  metadata: ProviderMetadata;
   adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
+  maps: ProviderMap[];
   lists: TaskList[];
-  calendarMaps: ReturnType<typeof useSyncStore.getState>['calendarMaps'];
   onDone: () => void;
-  noBorder?: boolean;
 }) {
-  const { addAccount, updateAccount, testConnection, discoverCalendars, linkCalendar, unlinkCalendar } = useSyncStore();
+  const {
+    addAccount,
+    updateAccount,
+    testConnection,
+    discoverSources,
+    linkSource,
+    unlinkSource,
+  } = useSyncStore();
   const { createList } = useListStore();
 
-  const [step, setStep] = useState<CalDavFormStep>('credentials');
+  const [step, setStep] = useState<FormStep>('credentials');
   const [displayName, setDisplayName] = useState(existing?.displayName ?? '');
-  const [serverUrl, setServerUrl] = useState(existing?.serverUrl ?? '');
-  const [username, setUsername] = useState(existing?.username ?? '');
-  const [password, setPassword] = useState(existing?.password ?? '');
+
+  // Initialize field values from existing account credentials or empty string.
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const field of metadata.credentialFields) {
+      init[field.key] = String(existing?.credentials[field.key] ?? '');
+    }
+    return init;
+  });
+
   const [testError, setTestError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<ProviderCalendar[]>([]);
   const [savedAccountId, setSavedAccountId] = useState<string | null>(existing?.id ?? null);
 
-  async function handleTest() {
+  const credentialsFromForm = (): Record<string, unknown> => {
+    const creds: Record<string, unknown> = {};
+    for (const field of metadata.credentialFields) {
+      creds[field.key] = fieldValues[field.key] ?? '';
+    }
+    return creds;
+  };
+
+  const isConnectDisabled = testing || metadata.credentialFields.some(
+    (f) => f.required && !fieldValues[f.key]?.trim()
+  );
+
+  async function handleConnect() {
     setTesting(true);
     setTestError(null);
-    const result = await testConnection(serverUrl, username, password);
+    const credentials = credentialsFromForm();
+    const result = await testConnection(providerType, credentials);
     setTesting(false);
+
     if (result.ok) {
       let accountId = savedAccountId;
+      const name = displayName || (providerType === 'caldav'
+        ? (() => { try { return new URL(String(credentials.server_url)).hostname; } catch { return metadata.displayName; } })()
+        : metadata.displayName);
+
       if (!accountId) {
-        const account = await addAccount(adapter, {
-          displayName: displayName || new URL(serverUrl).hostname,
-          serverUrl,
-          username,
-          password,
-          syncEnabled: true,
-        });
+        const account = await addAccount(adapter, providerType, name, credentials);
         accountId = account.id;
         setSavedAccountId(accountId);
       } else {
-        await updateAccount(adapter, accountId, { displayName, serverUrl, username, password });
+        await updateAccount(adapter, accountId, { displayName: name, credentials });
       }
-      setStep('calendars');
+
+      setStep('sources');
       setDiscovering(true);
-      const cals = await discoverCalendars(serverUrl, username, password);
-      setDiscovered(cals);
+      const sources = await discoverSources(providerType, credentials);
+      setDiscovered(sources);
       setDiscovering(false);
     } else {
       setTestError(result.error ?? 'Connection failed');
     }
   }
 
-  async function handleLinkToggle(cal: ProviderCalendar, eventsOnly = false) {
+  async function handleLinkToggle(source: ProviderCalendar, eventsOnly = false) {
     if (!savedAccountId) return;
-    const existing = calendarMaps.find(
-      (m) => m.accountId === savedAccountId && m.calendarHref === cal.id
+
+    const existingMap = maps.find(
+      (m) => m.accountId === savedAccountId && m.sourceId === source.id
     );
-    if (existing) {
-      await unlinkCalendar(adapter, existing.listId);
-    } else if (eventsOnly) {
-      // Events-only: fetch VEVENTs into the calendar view, no list created.
-      await linkCalendar(adapter, savedAccountId, cal.id, null, true);
-    } else {
-      let list = lists.find((l) => l.caldavUrl === cal.id);
-      if (!list) {
-        const name = cal.displayName ?? cal.id.split('/').filter(Boolean).pop() ?? 'Calendar';
-        list = await createList(adapter, name, cal.color ?? undefined);
-        await useListStore.getState().updateList(adapter, list.id, { caldavUrl: cal.id });
-        list = { ...list, caldavUrl: cal.id };
-      }
-      await linkCalendar(adapter, savedAccountId, cal.id, list, false);
-    }
-  }
 
-  return (
-    <section className={cn('p-4 space-y-4', !noBorder && 'border border-border rounded-md')}>
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{existing ? 'Edit CalDAV Account' : 'New CalDAV Account'}</h3>
-        <button onClick={onDone} className="text-muted-foreground hover:text-foreground">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      {step === 'credentials' || step === 'testing' ? (
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Display Name</label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="My Calendar Account"
-              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Server URL</label>
-            <input
-              type="url"
-              value={serverUrl}
-              onChange={(e) => setServerUrl(e.target.value)}
-              placeholder="https://caldav.fastmail.com"
-              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="user@example.com"
-              autoComplete="username"
-              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="App-specific password"
-              autoComplete="current-password"
-              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-
-          {testError && (
-            <p className="text-xs text-destructive flex items-center gap-1">
-              <WifiOff className="h-3.5 w-3.5" /> {testError}
-            </p>
-          )}
-
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={handleTest}
-              disabled={testing || !serverUrl || !username || !password}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {testing ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Wifi className="h-3.5 w-3.5" />
-              )}
-              {testing ? 'Connecting…' : 'Connect'}
-            </button>
-            <button onClick={onDone} className="text-xs text-muted-foreground hover:text-foreground px-2">
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-            <Check className="h-3.5 w-3.5" /> Connected successfully
-          </p>
-
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-2">
-              {discovering ? 'Discovering calendars…' : `${discovered.length} calendar${discovered.length !== 1 ? 's' : ''} found`}
-            </p>
-            {discovering && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                Scanning server…
-              </div>
-            )}
-            {!discovering && discovered.map((cal) => {
-              const linkedMap = savedAccountId
-                ? calendarMaps.find((m) => m.accountId === savedAccountId && m.calendarHref === cal.id)
-                : undefined;
-              const isLinked = Boolean(linkedMap);
-              const calName = cal.displayName ?? cal.id.split('/').filter(Boolean).pop() ?? 'Calendar';
-
-              return (
-                <div key={cal.id} className="flex items-center gap-2 py-1.5 border-b border-border last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{calName}</p>
-                    <p className="text-xs text-muted-foreground truncate">{cal.id}</p>
-                  </div>
-                  {isLinked ? (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                        {linkedMap?.eventsOnly
-                          ? <><Calendar className="h-3 w-3" /> Events only</>
-                          : <><Link className="h-3 w-3" /> Tasks</>
-                        }
-                      </span>
-                      <button
-                        onClick={() => handleLinkToggle(cal)}
-                        className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Unlink className="h-3 w-3" /> Unlink
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => handleLinkToggle(cal, false)}
-                        className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                        title="Sync as a task list"
-                      >
-                        <Link className="h-3 w-3" /> Tasks
-                      </button>
-                      <button
-                        onClick={() => handleLinkToggle(cal, true)}
-                        className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                        title="Show events in calendar view only — no task list created"
-                      >
-                        <Calendar className="h-3 w-3" /> Events only
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {!discovering && discovered.length === 0 && (
-              <p className="text-xs text-muted-foreground">No calendars discovered. Try linking manually.</p>
-            )}
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <button onClick={onDone} className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90">
-              Done
-            </button>
-            <button onClick={() => setStep('credentials')} className="text-xs text-muted-foreground hover:text-foreground px-2">
-              Edit credentials
-            </button>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ── AddGitHubAccountForm ──────────────────────────────────────────────────────
-
-type GitHubFormStep = 'credentials' | 'repos';
-
-function AddGitHubAccountForm({
-  existing,
-  adapter,
-  repoMaps,
-  onDone,
-  noBorder,
-}: {
-  existing: GitHubAccount | null;
-  adapter: NonNullable<ReturnType<typeof useApp>['adapter']>;
-  repoMaps: ReturnType<typeof useSyncStore.getState>['githubRepoMaps'];
-  onDone: () => void;
-  noBorder?: boolean;
-}) {
-  const {
-    addGitHubAccount,
-    updateGitHubAccount,
-    testGitHubConnection,
-    discoverGitHubRepos,
-    linkGitHubRepo,
-    unlinkGitHubRepo,
-  } = useSyncStore();
-  const { createList } = useListStore();
-
-  const [step, setStep] = useState<GitHubFormStep>('credentials');
-  const [displayName, setDisplayName] = useState(existing?.displayName ?? '');
-  const [token, setToken] = useState(existing?.token ?? '');
-  const [testError, setTestError] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [discovering, setDiscovering] = useState(false);
-  const [discovered, setDiscovered] = useState<ProviderCalendar[]>([]);
-  const [savedAccountId, setSavedAccountId] = useState<string | null>(existing?.id ?? null);
-
-  async function handleConnect() {
-    setTesting(true);
-    setTestError(null);
-    const result = await testGitHubConnection(token);
-    setTesting(false);
-    if (result.ok) {
-      let accountId = savedAccountId;
-      if (!accountId) {
-        const account = await addGitHubAccount(adapter, {
-          displayName: displayName || 'GitHub',
-          token,
-          syncEnabled: true,
-        });
-        accountId = account.id;
-        setSavedAccountId(accountId);
-      } else {
-        await updateGitHubAccount(adapter, accountId, {
-          displayName: displayName || 'GitHub',
-          token,
-        });
-      }
-      setStep('repos');
-      setDiscovering(true);
-      const repos = await discoverGitHubRepos(token);
-      setDiscovered(repos);
-      setDiscovering(false);
-    } else {
-      setTestError(result.error ?? 'Authentication failed. Check your token.');
-    }
-  }
-
-  async function handleRepoToggle(repo: ProviderCalendar) {
-    if (!savedAccountId) return;
-    const existingMap = repoMaps.find(
-      (m) => m.accountId === savedAccountId && m.repoFullName === repo.id
-    );
     if (existingMap) {
-      await unlinkGitHubRepo(adapter, existingMap.listId);
+      await unlinkSource(adapter, existingMap.id);
+    } else if (eventsOnly) {
+      // Events-only: no list, just track this source for calendar events.
+      await linkSource(adapter, savedAccountId, source.id, source.displayName, null, { events_only: true });
     } else {
-      const repoName = repo.displayName ?? repo.id.split('/').pop() ?? repo.id;
-      const list = await createList(adapter, repoName, undefined);
-      await linkGitHubRepo(adapter, savedAccountId, repo.id, list);
+      // Find or create a list for this source.
+      let list = lists.find((l) => l.remoteUrl === source.id);
+      if (!list) {
+        const name = source.displayName ?? source.id.split('/').filter(Boolean).pop() ?? metadata.sourceNoun;
+        list = await createList(adapter, name, source.color ?? undefined);
+        await useListStore.getState().updateList(adapter, list.id, { remoteUrl: source.id });
+        list = { ...list, remoteUrl: source.id };
+      }
+
+      // Default settings: for caldav set events_only=false; for all providers use empty object.
+      const settings: Record<string, unknown> = {};
+      if (metadata.supportsEvents) settings.events_only = false;
+
+      await linkSource(adapter, savedAccountId, source.id, source.displayName, list.id, settings);
     }
   }
 
   return (
-    <section className={cn('p-4 space-y-4', !noBorder && 'border border-border rounded-md')}>
+    <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold flex items-center gap-2">
-          <Github className="h-4 w-4" />
-          {existing ? 'Edit GitHub Account' : 'New GitHub Account'}
+          <ProviderIcon name={metadata.icon} className="h-4 w-4" />
+          {existing ? `Edit ${metadata.displayName} Account` : `New ${metadata.displayName} Account`}
         </h3>
         <button onClick={onDone} className="text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" />
@@ -922,32 +632,40 @@ function AddGitHubAccountForm({
 
       {step === 'credentials' ? (
         <div className="space-y-3">
+          {/* Display name (always shown) */}
           <div>
             <label className="text-xs font-medium text-muted-foreground block mb-1">Display Name</label>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="My GitHub Account"
+              placeholder={`My ${metadata.displayName} Account`}
               className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1">
-              Personal Access Token
-            </label>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="ghp_…"
-              autoComplete="off"
-              className="w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring font-mono"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Requires <code className="bg-muted px-1 rounded">repo</code> scope to read and write issues.
-            </p>
-          </div>
+
+          {/* Dynamic credential fields */}
+          {metadata.credentialFields.map((field) => (
+            <div key={field.key}>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">
+                {field.label}{field.required && ' *'}
+              </label>
+              <input
+                type={field.fieldType === 'password' ? 'password' : field.fieldType === 'url' ? 'url' : 'text'}
+                value={fieldValues[field.key] ?? ''}
+                onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                placeholder={field.placeholder ?? undefined}
+                autoComplete={field.fieldType === 'password' ? 'current-password' : field.fieldType === 'text' ? 'username' : 'off'}
+                className={cn(
+                  'w-full text-sm border border-input rounded-md px-3 py-1.5 bg-background outline-none focus:ring-1 focus:ring-ring',
+                  field.fieldType === 'password' && 'font-mono'
+                )}
+              />
+              {field.helpText && (
+                <p className="text-xs text-muted-foreground mt-1">{field.helpText}</p>
+              )}
+            </div>
+          ))}
 
           {testError && (
             <p className="text-xs text-destructive flex items-center gap-1">
@@ -958,13 +676,13 @@ function AddGitHubAccountForm({
           <div className="flex gap-2 pt-1">
             <button
               onClick={handleConnect}
-              disabled={testing || !token}
+              disabled={isConnectDisabled}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {testing ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Github className="h-3.5 w-3.5" />
+                <ProviderIcon name={metadata.icon} className="h-3.5 w-3.5" />
               )}
               {testing ? 'Connecting…' : 'Connect'}
             </button>
@@ -982,57 +700,84 @@ function AddGitHubAccountForm({
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2">
               {discovering
-                ? 'Loading repositories…'
-                : `${discovered.length} repositor${discovered.length !== 1 ? 'ies' : 'y'} found`}
+                ? `Discovering ${metadata.sourceNounPlural}…`
+                : `${discovered.length} ${discovered.length === 1 ? metadata.sourceNoun : metadata.sourceNounPlural} found`}
             </p>
             {discovering && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                Fetching repositories…
+                Scanning…
               </div>
             )}
-            {!discovering && discovered.map((repo) => {
+            {!discovering && discovered.map((source) => {
               const linkedMap = savedAccountId
-                ? repoMaps.find((m) => m.accountId === savedAccountId && m.repoFullName === repo.id)
+                ? maps.find((m) => m.accountId === savedAccountId && m.sourceId === source.id)
                 : undefined;
               const isLinked = Boolean(linkedMap);
+              const sourceName = source.displayName ?? source.id.split('/').filter(Boolean).pop() ?? source.id;
 
               return (
-                <div key={repo.id} className="py-1.5 border-b border-border last:border-0">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate">{repo.displayName ?? repo.id}</p>
-                      <p className="text-xs text-muted-foreground truncate">{repo.id}</p>
-                    </div>
-                    <button
-                      onClick={() => handleRepoToggle(repo)}
-                      className={cn(
-                        'flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors flex-shrink-0',
-                        isLinked
-                          ? 'bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive'
-                          : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
-                      )}
-                    >
-                      {isLinked ? <><Unlink className="h-3 w-3" /> Unlink</> : <><Link className="h-3 w-3" /> Link</>}
-                    </button>
+                <div key={source.id} className="flex items-center gap-2 py-1.5 border-b border-border last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{sourceName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{source.id}</p>
                   </div>
-                  {isLinked && linkedMap && (
-                    <RepoSettingsInline map={linkedMap} adapter={adapter} />
+                  {isLinked ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {linkedMap?.settings.events_only
+                          ? <><Calendar className="h-3 w-3" /> Events only</>
+                          : <><Link className="h-3 w-3" /> Tasks</>}
+                      </span>
+                      <button
+                        onClick={() => handleLinkToggle(source)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-primary/10 text-primary hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Unlink className="h-3 w-3" /> Unlink
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleLinkToggle(source, false)}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        title={`Sync as a task list`}
+                      >
+                        <Link className="h-3 w-3" /> Tasks
+                      </button>
+                      {metadata.supportsEvents && (
+                        <button
+                          onClick={() => handleLinkToggle(source, true)}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                          title="Show events in calendar view only — no task list created"
+                        >
+                          <Calendar className="h-3 w-3" /> Events only
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               );
             })}
             {!discovering && discovered.length === 0 && (
-              <p className="text-xs text-muted-foreground">No repositories found.</p>
+              <p className="text-xs text-muted-foreground">
+                No {metadata.sourceNounPlural} discovered.
+              </p>
             )}
           </div>
 
           <div className="flex gap-2 pt-1">
-            <button onClick={onDone} className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90">
+            <button
+              onClick={onDone}
+              className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90"
+            >
               Done
             </button>
-            <button onClick={() => setStep('credentials')} className="text-xs text-muted-foreground hover:text-foreground px-2">
-              Edit token
+            <button
+              onClick={() => setStep('credentials')}
+              className="text-xs text-muted-foreground hover:text-foreground px-2"
+            >
+              Edit credentials
             </button>
           </div>
         </div>

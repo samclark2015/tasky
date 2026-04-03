@@ -21,6 +21,8 @@ Bootstraps the entire Tauri application.
 - `discover_calendars` -- delegates to `tasky_providers::dispatch`
 - `sync_account` -- delegates to `tasky_providers::dispatch`
 - `fetch_events` -- delegates to `tasky_providers::dispatch`
+- `list_providers` -- returns list of registered provider IDs (Phase 6)
+- `get_provider_metadata` -- returns ProviderMetadata for a given provider ID (Phase 6)
 - `reset_database` (debug only) -- deletes `tasky.db` from app data dir
 
 **Plugins loaded:**
@@ -32,7 +34,7 @@ Bootstraps the entire Tauri application.
 - Debug: creates "Developer" submenu with "Reset Database" and "Reload" items
 - Menu event handler: theme items update checks + emit `set-theme` event to webview
 
-### providers.rs (77 lines)
+### providers.rs
 
 Thin IPC wrappers delegating to `tasky_providers::dispatch`.
 
@@ -57,12 +59,17 @@ pub async fn fetch_events(
     calendar_href: String,
     range_start: String, range_end: String,
 ) -> Result<FetchEventsResult, String>
+
+// Phase 6 additions:
+pub async fn list_providers() -> Result<Vec<String>, String>
+pub async fn get_provider_metadata(provider: String) -> Result<ProviderMetadataResult, String>
 ```
 
 **Response types defined here:**
 - `ConnectionResult { ok, principal, error }`
 - `DiscoverResult { calendars: Vec<ProviderCalendar>, error }`
 - `FetchEventsResult { events: Vec<ProviderEvent>, error }`
+- `ProviderMetadataResult { metadata: ProviderMetadata }` (Phase 6)
 
 ### tauri.conf.json
 
@@ -105,6 +112,7 @@ Permissions: `core:default`, `core:window:default`, `core:window:allow-start-dra
 ```rust
 pub trait SyncProvider {
     fn provider_id() -> &'static str;
+    fn metadata() -> ProviderMetadata;   // Phase 6: credential + map field definitions
     async fn test_connection(config: &Value) -> Result<bool, String>;
     async fn discover_calendars(config: &Value) -> Result<Vec<ProviderCalendar>, String>;
     async fn sync(config: &Value, calendar_id: &str,
@@ -116,10 +124,40 @@ pub trait SyncProvider {
 }
 ```
 
+**Phase 6 metadata types (providers/src/lib.rs):**
+
+```rust
+pub struct ProviderFieldDef {
+    pub key: String,         // snake_case key in credentials JSON
+    pub label: String,       // display label
+    pub field_type: String,  // "text" | "password" | "url"
+    pub required: bool,
+}
+
+pub struct ProviderMapFieldDef {
+    pub key: String,         // key in settings JSON
+    pub label: String,
+    pub field_type: String,  // "checkbox" | "text"
+    pub default_value: Option<serde_json::Value>,
+}
+
+pub struct ProviderMetadata {
+    pub id: String,
+    pub display_name: String,
+    pub icon: String,        // Lucide icon name: "wifi" (CalDAV), "github" (GitHub)
+    pub credential_fields: Vec<ProviderFieldDef>,
+    pub map_fields: Vec<ProviderMapFieldDef>,
+}
+```
+
 **Dispatch module:** Routes string provider IDs to implementations:
 - `"caldav"` -> `CalDavProvider`
 - `"github"` -> `GitHubProvider`
 - Other -> `Err("unknown provider: ...")`
+
+Phase 6 additions to dispatch:
+- `list_providers()` -- returns `vec!["caldav", "github"]`
+- `provider_metadata(id)` -- returns `ProviderMetadata` for given id
 
 ---
 
@@ -216,6 +254,9 @@ TypeScript types mirroring Rust structs. Priority uses RFC 5545 numeric mapping:
 | `SyncOutput` | Full sync result |
 | `TaskPushInput` | Task to push |
 | `TaskDeleteInput` | Task to delete |
+| `ProviderFieldDef` | Credential field definition (Phase 6) |
+| `ProviderMapFieldDef` | Map settings field definition (Phase 6) |
+| `ProviderMetadata` | Full provider metadata incl. icon + fields (Phase 6) |
 
 ### IPC Functions (providers/ipc.ts)
 
@@ -225,5 +266,7 @@ TypeScript types mirroring Rust structs. Priority uses RFC 5545 numeric mapping:
 | `providerDiscoverCalendars(providerId, config)` | `discover_calendars` | List available calendars/repos |
 | `providerSync(providerId, config, calendarId, pending, deleted)` | `sync_account` | Bidirectional sync |
 | `providerFetchEvents(providerId, config, calendarId, rangeStart, rangeEnd)` | `fetch_events` | Fetch VEVENT data |
+| `providerListProviders()` | `list_providers` | Returns `string[]` of provider IDs (Phase 6) |
+| `providerGetMetadata(providerId)` | `get_provider_metadata` | Returns `ProviderMetadata` (Phase 6) |
 
 All handle snake_case <-> camelCase conversion via private wire types and deserializers. The `providerId` string selects the Rust implementation.

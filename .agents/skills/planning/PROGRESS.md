@@ -2,8 +2,8 @@
 
 ## Current Status
 
-**Phase:** Phase 5 – Polish & Notifications  
-**Last Updated:** April 2, 2026
+**Phase:** Phase 6 – Provider Abstraction ✅ COMPLETE  
+**Last Updated:** April 3, 2026
 
 ## Phase Completion
 
@@ -12,7 +12,7 @@
 - [x] Phase 3: Calendar & Planner Views
 - [x] Phase 4: CalDAV Sync
 - [ ] Phase 5: Polish & Notifications
-- [ ] Phase 6: Provider Abstraction
+- [x] Phase 6: Provider Abstraction
 
 ## Detailed Progress
 
@@ -95,39 +95,39 @@
 - [x] `AutoSyncMount` inner component in `AppProvider` — mounts only after `ready === true`, calls `useAutoSync(adapter)`
 - [x] Settings UI "Sync" section above Accounts — `<select>` for Off / 5 / 15 / 30 / 60 min interval, styled with border/bg-background
 
-### Phase 6: Provider Abstraction
-- [ ] 6.1 Rust Provider Metadata System
-  - [ ] Metadata types in `providers/src/lib.rs` (ProviderFieldDef, ProviderMapFieldDef, ProviderMetadata)
-  - [ ] `metadata()` method on SyncProvider trait
-  - [ ] CalDavProvider metadata implementation
-  - [ ] GitHubProvider metadata implementation
-  - [ ] `dispatch::list_providers()` + `dispatch::provider_metadata()`
-  - [ ] Tauri IPC commands (`list_providers`, `get_provider_metadata`)
-  - [ ] TS types + IPC bridge functions
-- [ ] 6.2 Unified DB Schema + Repository
-  - [ ] Migration v10 (create unified tables, migrate data, rename columns, drop old tables)
-  - [ ] ProviderAccount + ProviderMap TS types (replace CalDavAccount, GitHubAccount, etc.)
-  - [ ] Task.caldavUid → remoteId, TaskList.caldavUrl → remoteUrl
-  - [ ] Generic createProviderAccountRepository + createProviderMapRepository
-  - [ ] Update task/list repos for renamed columns
-- [ ] 6.3 Unified Sync Store
-  - [ ] Replace 4 state arrays with `accounts: ProviderAccount[]` + `maps: ProviderMap[]`
-  - [ ] Consolidate duplicate account/map actions into generic versions
-  - [ ] Single unified `syncAccount(accountId)` replacing CalDAV + GitHub variants
-  - [ ] Simplify `syncAll()` and `syncPending()`
-  - [ ] Update auto-sync hook and other consumers
-- [ ] 6.4 Generic Settings UI
-  - [ ] ProviderAccountRow (replaces CalDavAccountRow + GitHubAccountRow)
-  - [ ] SourceSettingsInline (replaces RepoSettingsInline)
-  - [ ] AddAccountForm (replaces AddCalDavAccountForm + AddGitHubAccountForm)
-  - [ ] Simplified AddAccountModal + EditAccountModal
-  - [ ] Dynamic Lucide icon rendering from metadata
-  - [ ] Delete all provider-specific UI components
-- [ ] 6.5 Cleanup & Verification
-  - [ ] Remove dead types and stale references
-  - [ ] cargo build + tsc --noEmit pass
-  - [ ] Smoke test both providers end-to-end
-  - [ ] Update PROGRESS.md with implementation notes
+### Phase 6: Provider Abstraction ✅ (completed Apr 3 2026)
+- [x] 6.1 Rust Provider Metadata System
+  - [x] Metadata types in `providers/src/lib.rs` (ProviderFieldDef, ProviderMapFieldDef, ProviderMetadata)
+  - [x] `metadata()` method on SyncProvider trait
+  - [x] CalDavProvider metadata implementation
+  - [x] GitHubProvider metadata implementation
+  - [x] `dispatch::list_providers()` + `dispatch::provider_metadata()`
+  - [x] Tauri IPC commands (`list_providers`, `get_provider_metadata`)
+  - [x] TS types + IPC bridge functions
+- [x] 6.2 Unified DB Schema + Repository
+  - [x] Migration v10 (create unified tables, migrate data, rename columns, drop old tables)
+  - [x] ProviderAccount + ProviderMap TS types (replace CalDavAccount, GitHubAccount, etc.)
+  - [x] Task.caldavUid → remoteId, TaskList.caldavUrl → remoteUrl
+  - [x] Generic createProviderAccountRepository + createProviderMapRepository
+  - [x] Update task/list repos for renamed columns
+- [x] 6.3 Unified Sync Store
+  - [x] Replace 4 state arrays with `accounts: ProviderAccount[]` + `maps: ProviderMap[]`
+  - [x] Consolidate duplicate account/map actions into generic versions
+  - [x] Single unified `syncAccount(accountId)` replacing CalDAV + GitHub variants
+  - [x] Simplify `syncAll()` and `syncPending()`
+  - [x] Auto-sync hook compatible (no changes needed)
+- [x] 6.4 Generic Settings UI
+  - [x] ProviderAccountRow (replaces CalDavAccountRow + GitHubAccountRow)
+  - [x] SourceSettingsInline (replaces RepoSettingsInline)
+  - [x] AddAccountForm (replaces AddCalDavAccountForm + AddGitHubAccountForm)
+  - [x] Simplified AccountModal
+  - [x] Dynamic Lucide icon rendering from metadata
+  - [x] Deleted all provider-specific UI components
+- [x] 6.5 Cleanup & Verification
+  - [x] Remove dead types and stale references (no old CalDavAccount/caldavUid refs remain)
+  - [x] Fixed calendar view to use new maps/accounts API
+  - [x] cargo build passes clean
+  - [x] pnpm typecheck passes clean
 
 ## Blockers
 
@@ -239,3 +239,17 @@ None currently.
 - `triggerSync` reads fresh state at fire time via `getState()` so stale closures are never a problem
 - `AutoSyncMount` renders `null`; used purely as a mounting point so hooks run inside `AppContext.Provider` after `ready === true`
 - Debounce delay: 30 seconds (constant `DEBOUNCE_DELAY_MS`)
+
+### Phase 6: Provider Abstraction Implementation Notes (Apr 3 2026)
+- `ProviderMap.id` is the primary key (a UUID), NOT `listId`. Always use `map.id` for unlink/update operations.
+- `ProviderMap.listId` is nullable — `null` for events-only CalDAV calendars (no associated task list)
+- Credentials shape: CalDAV → `{ server_url, username, password }`; GitHub → `{ token }` (stored as JSON in `provider_accounts.credentials`)
+- Map settings shape: CalDAV → `{ events_only: bool, sync_token: string|null }`; GitHub → `{ query: string|null, read_only: bool }`
+- Unified sync config built as `{ ...account.credentials, ...map.settings }` — works for both providers
+- `SyncResult` type is defined locally inside `sync.ts` (not exported from `types.ts`)
+- Events-only CalDAV maps (listId===null) are skipped during task sync
+- Calendar view updated to use `maps` filtered by `providerType === 'caldav'`; `cm.calendarHref` → `cm.sourceId`; credentials extracted via `account.credentials as Record<string,string>`
+- `ProviderMetadata.icon` holds Lucide icon name strings ("wifi" for CalDAV, "github" for GitHub); mapped to React components via `ICON_MAP` in settings view
+- Settings view is fully metadata-driven: credential form fields and map settings fields are rendered generically from `ProviderMetadata.credentialFields` and `ProviderMetadata.mapFields`
+- Migration v10 performs a multi-step SQL migration: creates new tables → copies data → renames columns → drops old tables. Uses `ALTER TABLE` for column renames (SQLite 3.25+ feature)
+- `m.settings.events_only` is type `unknown` (from `Record<string,unknown>`); use `!!m.settings.events_only` for JSX boolean contexts

@@ -2,7 +2,7 @@ mod providers;
 
 use std::sync::Mutex;
 use tauri::{Runtime, menu::CheckMenuItem};
-use providers::{discover_calendars, fetch_events, sync_account, test_connection};
+use providers::{discover_calendars, fetch_events, get_provider_metadata, list_providers, sync_account, test_connection};
 
 struct ThemeMenuState<R: Runtime> {
     light: CheckMenuItem<R>,
@@ -51,6 +51,8 @@ pub fn run() {
             discover_calendars,
             sync_account,
             fetch_events,
+            list_providers,
+            get_provider_metadata,
         ]);
     #[cfg(not(debug_assertions))]
     let builder = tauri::Builder::default()
@@ -60,6 +62,8 @@ pub fn run() {
             discover_calendars,
             sync_account,
             fetch_events,
+            list_providers,
+            get_provider_metadata,
         ]);
 
     builder

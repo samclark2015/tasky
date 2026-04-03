@@ -26,7 +26,7 @@ createAdapter(database: Database): DatabaseAdapter
 
 ## Repositories (src/db/repository.ts)
 
-Six factory functions, each accepting a `DatabaseAdapter`:
+Four factory functions (Phase 6 replaced old provider-specific repos with generic ones):
 
 ### createTaskRepository(db)
 
@@ -51,21 +51,13 @@ Six factory functions, each accepting a `DatabaseAdapter`:
 | `update` | `(id, updates: Partial<TaskList>) => Promise<void>` |
 | `delete` | `(id) => Promise<void>` |
 
-### createAccountRepository(db)
+### createProviderAccountRepository(db)
 
-`getAll`, `getById`, `create`, `update`, `delete`, plus `setLastSynced(id, at)`.
+`getAll`, `getById`, `create`, `update`, `delete`, `setLastSynced(id, at)`. Operates on `provider_accounts` table. Stores/retrieves `credentials` as JSON.
 
-### createCalendarMapRepository(db)
+### createProviderMapRepository(db)
 
-`getAll`, `getByAccount(accountId)`, `getByList(listId)`, `upsert(map)` (INSERT OR REPLACE), `updateSyncToken(listId, syncToken)`, `delete(listId)`.
-
-### createGitHubAccountRepository(db)
-
-`getAll`, `getById`, `create`, `update`, `delete`, `setLastSynced`.
-
-### createGitHubRepoMapRepository(db)
-
-`getAll`, `getByAccount(accountId)`, `getByList(listId)`, `upsert(map)`, `update(listId, {query?, readOnly?})`, `delete(listId)`.
+`getAll`, `getByAccount(accountId)`, `getByList(listId)`, `create(map)`, `update(id, updates)`, `delete(id)`. Operates on `provider_maps` table. `id` is the primary key (not `listId`). Stores/retrieves `settings` as JSON.
 
 ### Standalone functions
 
@@ -76,8 +68,10 @@ Six factory functions, each accepting a `DatabaseAdapter`:
 
 Private functions in `repository.ts` that convert snake_case DB columns to camelCase TypeScript objects:
 
-- `rowToTask` -- JSON-parses `tags` (string -> string[]) and `recurrence` (string -> RecurrenceRule | null), coerces `completed` (0/1 -> boolean)
-- `rowToList`, `rowToAccount`, `rowToCalendarMap`, `rowToGitHubAccount`, `rowToGitHubRepoMap` -- straightforward snake_case -> camelCase
+- `rowToTask` -- JSON-parses `tags` (string -> string[]) and `recurrence` (string -> RecurrenceRule | null), coerces `completed` (0/1 -> boolean), maps `remote_id` → `remoteId`
+- `rowToList` -- maps `remote_url` → `remoteUrl`
+- `rowToProviderAccount` -- JSON-parses `credentials`
+- `rowToProviderMap` -- JSON-parses `settings`
 
 ## Migrations (src/db/migrate.ts + src/db/migrations/index.ts)
 
@@ -86,7 +80,17 @@ Private functions in `repository.ts` that convert snake_case DB columns to camel
 2. Reads all applied versions
 3. Iterates `MIGRATIONS` array (exported from `migrations/index.ts`), applies unapplied SQL, inserts version record
 
-9 migrations total (v1-v9). See `data-model.md` for the cumulative schema.
+10 migrations total (v1-v10). Migration v10 (Phase 6):
+- Creates `provider_accounts` and `provider_maps` tables
+- Migrates existing `caldav_accounts` → `provider_accounts` (type='caldav', credentials JSON)
+- Migrates existing `github_accounts` → `provider_accounts` (type='github', credentials JSON)
+- Migrates existing `caldav_calendar_map` → `provider_maps` (settings JSON)
+- Migrates existing `github_repo_map` → `provider_maps` (settings JSON)
+- Renames `tasks.caldav_uid` → `tasks.remote_id`
+- Renames `lists.caldav_url` → `lists.remote_url`
+- Drops old tables
+
+See `data-model.md` for the cumulative schema.
 
 ## Utility Functions (src/lib/utils.ts)
 
