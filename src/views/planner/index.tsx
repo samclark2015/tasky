@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Plus, Clock, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
 import { format, startOfDay, addDays, isToday, isTomorrow, differenceInCalendarDays } from 'date-fns';
 import type { Task } from '@/types/types';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 
 const DAYS_AHEAD = 14;
 
@@ -92,6 +93,7 @@ function DayBlock({ date, tasks, totalEstimate }: DayBlockProps) {
 export function PlannerView() {
   const { tasks, createTask } = useTaskStore();
   const { adapter } = useApp();
+  const isMobile = useIsMobile();
   const [showNewTask, setShowNewTask] = useState(false);
   const [unscheduledCollapsed, setUnscheduledCollapsed] = useState(false);
 
@@ -143,13 +145,15 @@ export function PlannerView() {
       <div className="flex flex-col h-full">
         <ViewHeader
           actions={
-            <button
-              onClick={() => setShowNewTask(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              Add
-            </button>
+            !isMobile ? (
+              <button
+                onClick={() => setShowNewTask(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+            ) : undefined
           }
         >
           <h1 className="text-lg font-semibold">Planner</h1>

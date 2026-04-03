@@ -7,10 +7,12 @@ import { ViewHeader } from '@/components/layout/view-header';
 import { TaskItem } from '@/components/task/task-item';
 import { TaskModal } from '@/components/modals/task-modal';
 import { QuickAdd } from '@/components/task/quick-add';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 
 export function TodayView() {
   const { tasks, createTask } = useTaskStore();
   const { adapter } = useApp();
+  const isMobile = useIsMobile();
   const [showModal, setShowModal] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
@@ -40,13 +42,15 @@ export function TodayView() {
             <span className="text-sm text-muted-foreground">
               {todayTasks.length + overdueTasks.length} remaining
             </span>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              Add
-            </button>
+            {!isMobile && (
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+            )}
           </>
         }>
           <div>

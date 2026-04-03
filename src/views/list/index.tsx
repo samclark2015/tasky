@@ -7,12 +7,14 @@ import { TaskItem } from '@/components/task/task-item';
 import { TaskModal } from '@/components/modals/task-modal';
 import { ListModal } from '@/components/modals/list-modal';
 import { QuickAdd } from '@/components/task/quick-add';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 
 export function ListView() {
   const { tasks, createTask } = useTaskStore();
   const { lists } = useListStore();
   const { currentListId } = useUIStore();
   const { adapter } = useApp();
+  const isMobile = useIsMobile();
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showListModal, setShowListModal] = useState(false);
 
@@ -50,13 +52,15 @@ export function ListView() {
             >
               <MoreHorizontal className="h-4 w-4" />
             </button>
-            <button
-              onClick={() => setShowTaskModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              Add
-            </button>
+            {!isMobile && (
+              <button
+                onClick={() => setShowTaskModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
+            )}
           </>
         }>
           <div className="flex items-center gap-2 min-w-0">
