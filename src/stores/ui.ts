@@ -13,6 +13,7 @@ interface UIStore {
   currentListId: string | null;
   theme: Theme;
   searchQuery: string;
+  searchOpen: boolean;
   syncIntervalMinutes: SyncInterval;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -22,6 +23,7 @@ interface UIStore {
   navigateTo: (view: ViewType, listId?: string) => void;
   setTheme: (theme: Theme) => void;
   setSearchQuery: (q: string) => void;
+  setSearchOpen: (open: boolean) => void;
   setSyncInterval: (interval: SyncInterval) => void;
 }
 
@@ -35,6 +37,7 @@ export const useUIStore = create<UIStore>()(
       currentListId: null,
       theme: 'system',
       searchQuery: '',
+      searchOpen: false,
       syncIntervalMinutes: null,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -50,6 +53,7 @@ export const useUIStore = create<UIStore>()(
 
       setTheme: (theme) => set({ theme }),
       setSearchQuery: (q) => set({ searchQuery: q }),
+      setSearchOpen: (open) => set({ searchOpen: open }),
       setSyncInterval: (interval) => set({ syncIntervalMinutes: interval }),
     }),
     {

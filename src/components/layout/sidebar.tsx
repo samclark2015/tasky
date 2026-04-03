@@ -30,7 +30,6 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { view: 'today', label: 'Today', icon: <CheckSquare className="h-4 w-4" /> },
   { view: 'inbox', label: 'Inbox', icon: <Inbox className="h-4 w-4" /> },
-  { view: 'search', label: 'Search', icon: <Search className="h-4 w-4" /> },
   { view: 'calendar', label: 'Calendar', icon: <CalendarDays className="h-4 w-4" /> },
   { view: 'planner', label: 'Planner', icon: <LayoutList className="h-4 w-4" /> },
 ];
@@ -55,7 +54,7 @@ function useTooltip() {
 }
 
 export function Sidebar() {
-  const { currentView, currentListId, navigateTo, toggleSidebar, sidebarOpen } = useUIStore();
+  const { currentView, currentListId, navigateTo, toggleSidebar, sidebarOpen, setSearchOpen } = useUIStore();
   const { lists } = useListStore();
   const { syncStatus, isSyncing, syncAll } = useSyncStore();
   const { tasks } = useTaskStore();
@@ -115,6 +114,26 @@ export function Sidebar() {
 
         {/* Nav */}
         <nav className={cn('flex-1 overflow-y-auto py-2 space-y-0.5', sidebarOpen ? 'px-2' : 'px-1.5')}>
+          {/* Search button */}
+          {sidebarOpen ? (
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 mb-1 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors"
+            >
+              <Search className="h-4 w-4 flex-shrink-0" />
+              <span className="flex-1 text-left">Search</span>
+              <kbd className="text-xs text-muted-foreground/50 font-mono">⌘F</kbd>
+            </button>
+          ) : (
+            <button
+              onClick={() => setSearchOpen(true)}
+              onMouseEnter={(e) => show(e, 'Search')}
+              onMouseLeave={hide}
+              className="w-full flex justify-center px-0 py-2 mb-1 rounded-md text-muted-foreground hover:bg-sidebar-accent/60 transition-colors"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          )}
           {NAV_ITEMS.map((item) => {
             const active = currentView === item.view && currentListId === null;
             return (

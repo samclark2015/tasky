@@ -13,6 +13,7 @@ import { ListView } from '@/views/list';
 import { SearchView } from '@/views/search';
 import { SettingsView } from '@/views/settings';
 import { TaskModal } from '@/components/modals/task-modal';
+import { SearchModal } from '@/components/modals/search-modal';
 import { UpdateModal } from '@/components/modals/update-modal';
 
 function ViewRouter({ view }: { view: ViewType }) {
@@ -29,7 +30,7 @@ function ViewRouter({ view }: { view: ViewType }) {
 }
 
 export function App() {
-  const { currentView, navigateTo, selectTask, setSearchQuery } = useUIStore();
+  const { currentView, navigateTo, selectTask, setSearchOpen } = useUIStore();
   const { theme, setTheme } = useTheme();
   const [showNewTask, setShowNewTask] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
@@ -66,7 +67,7 @@ export function App() {
       // Cmd/Ctrl+F — search
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault();
-        navigateTo('search');
+        setSearchOpen(true);
         return;
       }
 
@@ -85,7 +86,7 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigateTo, selectTask, setSearchQuery]);
+  }, [navigateTo, selectTask, setSearchOpen]);
 
   return (
     <>
@@ -100,6 +101,8 @@ export function App() {
       {pendingUpdate && (
         <UpdateModal update={pendingUpdate} onClose={() => setPendingUpdate(null)} />
       )}
+
+      <SearchModal />
     </>
   );
 }
