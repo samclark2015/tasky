@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ViewHeader } from '@/components/layout/view-header';
 import { useApp } from '@/components/app-provider';
+import { ModalSheet } from '@/components/layout/modal-sheet';
 import { useTaskStore, useListStore, useSyncStore, useUIStore, useAppSyncStore } from '@/stores';
 import type { SyncInterval } from '@/stores';
 import type { ProviderAccount, ProviderMap, TaskList } from '@/types';
@@ -431,20 +431,9 @@ function AccountModal({
   children: React.ReactNode;
 }) {
   return (
-    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
-        >
-          <Dialog.Title className="sr-only">{title}</Dialog.Title>
-          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh] overflow-y-auto">
-            <div className="p-4">{children}</div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <ModalSheet open onClose={onClose} title={title}>
+      <div className="flex-1 overflow-y-auto min-h-0 p-4">{children}</div>
+    </ModalSheet>
   );
 }
 

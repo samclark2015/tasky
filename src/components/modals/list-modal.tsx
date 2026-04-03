@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import type { TaskList } from '@/types/types';
 import { useListStore, useTaskStore, useUIStore } from '@/stores';
 import { useApp } from '@/components/app-provider';
 import { cn } from '@/lib/utils';
 import { X, Trash2 } from 'lucide-react';
+import { ModalSheet } from '@/components/layout/modal-sheet';
 
 interface ListModalProps {
   list?: TaskList | null;
@@ -59,27 +59,25 @@ export function ListModal({ list, onClose }: ListModalProps) {
   }
 
   return (
-    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
-          onOpenAutoFocus={(e) => { e.preventDefault(); nameRef.current?.focus(); }}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave(); }}
+    <ModalSheet
+      open
+      onClose={onClose}
+      title={list ? 'Edit List' : 'New List'}
+      maxWidth="sm"
+      onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave(); }}
+      onOpenAutoFocus={(e) => { e.preventDefault(); nameRef.current?.focus(); }}
+    >
+      <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border flex-shrink-0">
+        <span className="font-semibold text-sm">{list ? 'Edit List' : 'New List'}</span>
+        <button
+          onClick={onClose}
+          className="p-1 rounded hover:bg-accent text-muted-foreground"
         >
-          <Dialog.Title className="sr-only">{list ? 'Edit List' : 'New List'}</Dialog.Title>
-          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-sm">
-            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
-              <span className="font-semibold text-sm">{list ? 'Edit List' : 'New List'}</span>
-              <Dialog.Close asChild>
-                <button className="p-1 rounded hover:bg-accent text-muted-foreground">
-                  <X className="h-4 w-4" />
-                </button>
-              </Dialog.Close>
-            </div>
+          <X className="h-4 w-4" />
+        </button>
+      </div>
 
-        <div className="px-5 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4 space-y-4">
           {/* name */}
           <input
             ref={nameRef}
@@ -110,7 +108,7 @@ export function ListModal({ list, onClose }: ListModalProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border flex-shrink-0">
           {list ? (
             confirming ? (
               <div className="flex items-center gap-2">
@@ -156,9 +154,6 @@ export function ListModal({ list, onClose }: ListModalProps) {
             </button>
           </div>
         </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    </ModalSheet>
   );
 }

@@ -1,14 +1,18 @@
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+import type { ReactNode, KeyboardEventHandler } from 'react';
 
 interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  /** Tailwind height/max-height class for the sheet panel. Defaults to 'h-[90vh]'. */
+  height?: string;
+  onKeyDown?: KeyboardEventHandler;
 }
 
-export function BottomSheet({ open, onClose, children }: BottomSheetProps) {
+export function BottomSheet({ open, onClose, children, height = 'h-[90vh]', onKeyDown }: BottomSheetProps) {
   return createPortal(
     <AnimatePresence>
       {open && (
@@ -25,8 +29,7 @@ export function BottomSheet({ open, onClose, children }: BottomSheetProps) {
 
           {/* Sheet */}
           <motion.div
-            className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-background rounded-t-2xl overflow-hidden"
-            style={{ height: '90vh' }}
+            className={cn('fixed inset-x-0 bottom-0 z-50 bg-background rounded-t-2xl flex flex-col', height)}
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -37,15 +40,16 @@ export function BottomSheet({ open, onClose, children }: BottomSheetProps) {
             onDragEnd={(_, info) => {
               if (info.offset.y > 100) onClose();
             }}
+            onKeyDown={onKeyDown}
           >
             {/* Drag handle */}
             <div className="flex-shrink-0 flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
             </div>
 
-            {/* Content — scrollable, drag listener disabled so inner scroll works */}
+            {/* Content — children own their scroll */}
             <div
-              className="flex-1 overflow-y-auto overscroll-contain"
+              className="flex flex-col flex-1 overflow-hidden min-h-0"
               onPointerDown={(e) => e.stopPropagation()}
             >
               {children}

@@ -1,5 +1,4 @@
 import { useState, useRef } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { Task, RecurrenceRule } from '@/types/types';
 import { useTaskStore, useListStore } from '@/stores';
@@ -8,6 +7,7 @@ import { cn, minutesToHHMM, hhmmToMinutes, localDateFromString } from '@/lib/uti
 import { X, Calendar, Tag, AlignLeft, Clock, Flag, List, ChevronDown, Check } from 'lucide-react';
 import { TagInput } from '@/components/task/tag-input';
 import { RecurrenceEditor } from '@/components/task/recurrence-editor';
+import { ModalSheet } from '@/components/layout/modal-sheet';
 
 interface TaskModalProps {
   /** If provided, editing an existing task. If null, creating new. */
@@ -138,19 +138,15 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
   }
 
   return (
-    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 focus:outline-none"
-          onKeyDown={handleKeyDown}
-          onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}
-        >
-          <div className="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
-            <Dialog.Title className="sr-only">{task ? 'Edit Task' : 'New Task'}</Dialog.Title>
+    <ModalSheet
+      open
+      onClose={onClose}
+      title={task ? 'Edit Task' : 'New Task'}
+      onKeyDown={handleKeyDown}
+      onOpenAutoFocus={(e) => { e.preventDefault(); titleRef.current?.focus(); }}
+    >
         {/* header */}
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+        <div className="flex items-center justify-between px-5 pt-4 pb-2 flex-shrink-0">
           <span className="font-semibold text-sm text-muted-foreground">
             {task ? 'Edit Task' : 'New Task'}
           </span>
@@ -162,7 +158,7 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-4">
+        <div className="flex-1 overflow-y-auto min-h-0 px-5 pb-4 space-y-4">
           {/* title */}
           <input
             ref={titleRef}
@@ -328,7 +324,7 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
         </div>
 
         {/* footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border flex-shrink-0">
           <span className="text-xs text-muted-foreground">⌘↵ to save</span>
           <div className="flex gap-2">
             <button
@@ -346,9 +342,6 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
             </button>
           </div>
         </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    </ModalSheet>
   );
 }
