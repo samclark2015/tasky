@@ -1,6 +1,7 @@
 name: 'Build macOS ARM DMG'
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -38,6 +39,37 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Compute CalVer version
+        id: version
+        run: |
+          YEAR=$(python3 -c "import datetime; print(datetime.date.today().year)")
+          MONTH=$(python3 -c "import datetime; print(datetime.date.today().month)")
+          # Count existing stable tags for this month (no hyphen = not a pre-release)
+          N=$(git tag -l "${YEAR}.${MONTH}.*" | grep -v -- '-' | wc -l | tr -d ' ')
+          COMMITS=$(git rev-list --count HEAD)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${YEAR}.${MONTH}.${N}-pre.${COMMITS}" >> $GITHUB_OUTPUT
+            echo "build_args=--target aarch64-apple-darwin --config tauri.prerelease.conf.json" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "draft=false" >> $GITHUB_OUTPUT
+          else
+            echo "version=${YEAR}.${MONTH}.${N}" >> $GITHUB_OUTPUT
+            echo "build_args=--target aarch64-apple-darwin" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "draft=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Patch tauri.conf.json
+        run: |
+          python3 << 'PYEOF'
+          import json
+          with open('src-tauri/tauri.conf.json', 'r') as f:
+              config = json.load(f)
+          config['version'] = '${{ steps.version.outputs.version }}'
+          with open('src-tauri/tauri.conf.json', 'w') as f:
+              json.dump(config, f, indent=2)
+          PYEOF
+
       - name: Build and release Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -45,10 +77,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'Tasky v__VERSION__'
+          tagName: ${{ steps.version.outputs.version }}
+          releaseName: 'Tasky ${{ steps.version.outputs.version }}'
           releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
-          prerelease: false
+          releaseDraft: ${{ steps.version.outputs.draft }}
+          prerelease: ${{ steps.version.outputs.prerelease }}
           updaterJsonPreferNsis: true
-          args: '--target aarch64-apple-darwin'
+          args: ${{ steps.version.outputs.build_args }}

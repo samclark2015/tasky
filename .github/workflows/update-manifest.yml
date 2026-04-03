@@ -1,0 +1,42 @@
+name: 'Update pre-release update channel'
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-channel:
+    if: github.event.release.prerelease == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download latest.json from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "latest.json" \
+            --output latest.json
+
+      - name: Create prerelease-channel release if absent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view prerelease-channel --repo "${{ github.repository }}" &>/dev/null; then
+            gh release create prerelease-channel \
+              --repo "${{ github.repository }}" \
+              --title "Pre-release Update Channel" \
+              --notes "Serves as the updater endpoint for pre-release builds. Do not delete or modify manually." \
+              --prerelease
+          fi
+
+      - name: Publish latest.json to prerelease-channel
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload prerelease-channel latest.json \
+            --repo "${{ github.repository }}" \
+            --clobber
