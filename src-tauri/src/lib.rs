@@ -35,6 +35,13 @@ fn sync_theme(theme: String, state: tauri::State<Mutex<ThemeMenuState<tauri::Wry
     }
 }
 
+#[cfg(all(desktop, debug_assertions))]
+struct DevEmulationState<R: Runtime> {
+    emulate_mobile: CheckMenuItem<R>,
+    mobile_active: bool,
+    original_physical_size: Option<(u32, u32)>,
+}
+
 #[cfg(debug_assertions)]
 mod dev_commands {
     use tauri::{AppHandle, Manager};
@@ -143,8 +150,15 @@ pub fn run() {
                         let end_pos = items.len().saturating_sub(1);
                         let reset_item = MenuItem::with_id(app, "reset_db", "Reset Database", true, None::<&str>)?;
                         let reload_item = MenuItem::with_id(app, "reload_window", "Reload", true, None::<&str>)?;
-                        let dev_menu = Submenu::with_items(app, "Developer", true, &[&reset_item, &reload_item])?;
+                        let emulate_item = CheckMenuItem::with_id(app, "emulate_mobile", "Emulate Mobile", true, false, None::<&str>)?;
+                        let dev_menu = Submenu::with_items(app, "Developer", true, &[&reset_item, &reload_item, &emulate_item])?;
                         menu.insert(&dev_menu, end_pos)?;
+
+                        app.manage(Mutex::new(DevEmulationState {
+                            emulate_mobile: emulate_item.clone(),
+                            mobile_active: false,
+                            original_physical_size: None,
+                        }));
                     }
                 }
 
@@ -183,6 +197,33 @@ pub fn run() {
                     } else if event.id() == "reload_window" {
                         if let Some(win) = app.get_webview_window("main") {
                             let _: tauri::Result<()> = win.eval("location.reload()");
+                        }
+                    } else if event.id() == "emulate_mobile" {
+                        if let Some(win) = app.get_webview_window("main") {
+                            if let Some(state) = app.try_state::<Mutex<DevEmulationState<tauri::Wry>>>() {
+                                if let Ok(mut s) = state.lock() {
+                                    if !s.mobile_active {
+                                        if let Ok(size) = win.inner_size() {
+                                            s.original_physical_size = Some((size.width, size.height));
+                                        }
+                                        let _ = win.set_min_size(None::<tauri::LogicalSize<f64>>);
+                                        let _ = win.set_size(tauri::LogicalSize::new(390.0_f64, 844.0_f64));
+                                        s.mobile_active = true;
+                                        let _ = s.emulate_mobile.set_checked(true);
+                                        eprintln!("[dev] Mobile emulation on (390×844)");
+                                    } else {
+                                        let _ = win.set_min_size(Some(tauri::LogicalSize::new(800.0_f64, 600.0_f64)));
+                                        if let Some((w, h)) = s.original_physical_size {
+                                            let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+                                        } else {
+                                            let _ = win.set_size(tauri::LogicalSize::new(1200.0_f64, 750.0_f64));
+                                        }
+                                        s.mobile_active = false;
+                                        let _ = s.emulate_mobile.set_checked(false);
+                                        eprintln!("[dev] Mobile emulation off");
+                                    }
+                                }
+                            }
                         }
                     }
                 });
