@@ -9,8 +9,12 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  EventPushInput,
   ProviderCalendar,
   ProviderEvent,
+  ProviderFieldDef,
+  ProviderMapFieldDef,
+  ProviderMetadata,
   ProviderTask,
   PushResult,
   SyncOutput,
@@ -36,6 +40,8 @@ interface WireProviderEvent {
   end: string | null;
   location: string | null;
   color: string | null;
+  etag: string;
+  href: string;
 }
 
 interface WireProviderTask {
@@ -69,6 +75,9 @@ interface WireSyncOutput {
   delete_errors: string[];
   remote_tasks: WireProviderTask[];
   fetch_error: string | null;
+  event_pushed: WirePushResult[];
+  event_push_errors: string[];
+  remote_events: WireProviderEvent[];
 }
 
 // ── Deserialisers ─────────────────────────────────────────────────────────────
@@ -87,6 +96,8 @@ function fromWireEvent(w: WireProviderEvent): ProviderEvent {
     end: w.end,
     location: w.location,
     color: w.color,
+    etag: w.etag,
+    href: w.href,
   };
 }
 
@@ -122,6 +133,14 @@ function fromWireSyncOutput(w: WireSyncOutput): SyncOutput {
     deleteErrors: w.delete_errors,
     remoteTasks: w.remote_tasks.map(fromWireTask),
     fetchError: w.fetch_error,
+    eventPushed: w.event_pushed.map((p): PushResult => ({
+      localId: p.local_id,
+      remoteId: p.remote_id,
+      etag: p.etag,
+      href: p.href,
+    })),
+    eventPushErrors: w.event_push_errors,
+    remoteEvents: w.remote_events.map(fromWireEvent),
   };
 }
 
@@ -145,6 +164,23 @@ function toWirePushInput(t: TaskPushInput) {
     href: t.href,
     parent_remote_id: t.parentRemoteId,
     source_event_uid: t.sourceEventUid,
+  };
+}
+
+function toWireEventPushInput(e: EventPushInput) {
+  return {
+    local_id: e.localId,
+    event_uid: e.eventUid,
+    title: e.title,
+    description: e.description,
+    dtstart: e.dtstart,
+    dtend: e.dtend,
+    tags: e.tags,
+    notes: e.notes,
+    time_estimate: e.timeEstimate,
+    completed: e.completed,
+    priority: e.priority,
+    etag: e.etag,
   };
 }
 
@@ -182,6 +218,8 @@ export async function providerSync(
   calendarId: string,
   pending: TaskPushInput[],
   deleted: TaskDeleteInput[],
+  pendingEvents: EventPushInput[] = [],
+  eventUidsToCheck: string[] = [],
 ): Promise<SyncOutput> {
   const result = await invoke<WireSyncOutput>('sync_account', {
     provider: providerId,
@@ -189,6 +227,8 @@ export async function providerSync(
     calendarHref: calendarId,
     pendingTasks: pending.map(toWirePushInput),
     deletedHrefs: deleted.map((d) => ({ href: d.href, etag: d.etag })),
+    pendingEvents: pendingEvents.map(toWireEventPushInput),
+    eventUidsToCheck,
   });
   return fromWireSyncOutput(result);
 }
@@ -211,4 +251,80 @@ export async function providerFetchEvents(
     },
   );
   return result.events.map(fromWireEvent);
+}
+
+// ── Provider Metadata ─────────────────────────────────────────────────────────
+
+interface WireProviderFieldDef {
+  key: string;
+  label: string;
+  field_type: string;
+  required: boolean;
+  placeholder: string | null;
+  help_text: string | null;
+}
+
+interface WireProviderMapFieldDef {
+  key: string;
+  label: string;
+  field_type: string;
+  default_value: unknown;
+  help_text: string | null;
+}
+
+interface WireProviderMetadata {
+  id: string;
+  display_name: string;
+  icon: string;
+  description: string;
+  credential_fields: WireProviderFieldDef[];
+  map_fields: WireProviderMapFieldDef[];
+  source_noun: string;
+  source_noun_plural: string;
+  supports_events: boolean;
+}
+
+function fromWireFieldDef(w: WireProviderFieldDef): ProviderFieldDef {
+  return {
+    key: w.key,
+    label: w.label,
+    fieldType: w.field_type,
+    required: w.required,
+    placeholder: w.placeholder,
+    helpText: w.help_text,
+  };
+}
+
+function fromWireMapFieldDef(w: WireProviderMapFieldDef): ProviderMapFieldDef {
+  return {
+    key: w.key,
+    label: w.label,
+    fieldType: w.field_type,
+    defaultValue: w.default_value,
+    helpText: w.help_text,
+  };
+}
+
+function fromWireMetadata(w: WireProviderMetadata): ProviderMetadata {
+  return {
+    id: w.id,
+    displayName: w.display_name,
+    icon: w.icon,
+    description: w.description,
+    credentialFields: w.credential_fields.map(fromWireFieldDef),
+    mapFields: w.map_fields.map(fromWireMapFieldDef),
+    sourceNoun: w.source_noun,
+    sourceNounPlural: w.source_noun_plural,
+    supportsEvents: w.supports_events,
+  };
+}
+
+export async function providerListProviders(): Promise<ProviderMetadata[]> {
+  const result = await invoke<WireProviderMetadata[]>('list_providers');
+  return result.map(fromWireMetadata);
+}
+
+export async function providerGetMetadata(providerId: string): Promise<ProviderMetadata> {
+  const result = await invoke<WireProviderMetadata>('get_provider_metadata', { provider: providerId });
+  return fromWireMetadata(result);
 }

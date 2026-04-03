@@ -1,12 +1,8 @@
 name: Deploy Website to GitHub Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-pages.yml'
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -35,9 +31,62 @@ jobs:
         run: pnpm install
         working-directory: docs
 
-      - name: Build Astro site
+      # Full release: restore dev from cache so it stays on the deployed site.
+      - name: Restore dev build from cache
+        id: restore-dev
+        if: ${{ !github.event.release.prerelease }}
+        uses: actions/cache/restore@v4
+        with:
+          path: docs/dist-dev
+          key: docs-dev-build-${{ github.run_id }}
+          restore-keys: docs-dev-build-
+
+      # Pre-release: restore stable from cache so it stays on the deployed site.
+      - name: Restore stable build from cache
+        id: restore-stable
+        if: ${{ github.event.release.prerelease }}
+        uses: actions/cache/restore@v4
+        with:
+          path: docs/dist
+          key: docs-stable-build-${{ github.run_id }}
+          restore-keys: docs-stable-build-
+
+      # Build stable on full release. On pre-release, only build if cache missed.
+      - name: Build stable site
+        if: ${{ !github.event.release.prerelease || steps.restore-stable.outputs.cache-hit != 'true' }}
         run: pnpm build
         working-directory: docs
+        env:
+          ASTRO_BASE: /tasky/
+
+      # Build dev on pre-release. On full release, only build if cache missed.
+      - name: Build dev site
+        if: ${{ github.event.release.prerelease || steps.restore-dev.outputs.cache-hit != 'true' }}
+        run: pnpm exec astro build --outDir dist-dev
+        working-directory: docs
+        env:
+          ASTRO_BASE: /tasky/dev/
+
+      # Save stable build to cache whenever it was (re)built.
+      - name: Save stable build to cache
+        if: ${{ !github.event.release.prerelease || steps.restore-stable.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: docs/dist
+          key: docs-stable-build-${{ github.run_id }}
+
+      # Save dev build to cache whenever it was (re)built.
+      - name: Save dev build to cache
+        if: ${{ github.event.release.prerelease || steps.restore-dev.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: docs/dist-dev
+          key: docs-dev-build-${{ github.run_id }}
+
+      - name: Merge dev build into stable artifact
+        run: |
+          mkdir -p docs/dist/dev
+          cp -r docs/dist-dev/. docs/dist/dev/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

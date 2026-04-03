@@ -3,6 +3,6 @@ import tailwind from '@astrojs/tailwind';
 
 export default defineConfig({
   site: 'https://samclark2015.github.io',
-  base: '/tasky/',
+  base: process.env.ASTRO_BASE ?? '/tasky/',
   integrations: [tailwind()],
 });

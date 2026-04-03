@@ -37,6 +37,8 @@ export interface ProviderEvent {
   end: string | null;
   location: string | null;
   color: string | null;
+  etag: string;
+  href: string;
 }
 
 export interface PushResult {
@@ -52,6 +54,24 @@ export interface SyncOutput {
   deleteErrors: string[];
   remoteTasks: ProviderTask[];
   fetchError: string | null;
+  eventPushed: PushResult[];
+  eventPushErrors: string[];
+  remoteEvents: ProviderEvent[];
+}
+
+export interface EventPushInput {
+  localId: string;
+  eventUid: string;
+  title: string;
+  description: string | null;
+  dtstart: string | null;
+  dtend: string | null;
+  tags: string[];
+  notes: string | null;
+  timeEstimate: number | null;
+  completed: boolean;
+  priority: string;
+  etag: string | null;
 }
 
 export interface TaskPushInput {
@@ -76,4 +96,36 @@ export interface TaskPushInput {
 export interface TaskDeleteInput {
   href: string;
   etag: string | null;
+}
+
+export interface ProviderFieldDef {
+  key: string;
+  label: string;
+  /** "text" | "password" | "url" */
+  fieldType: string;
+  required: boolean;
+  placeholder: string | null;
+  helpText: string | null;
+}
+
+export interface ProviderMapFieldDef {
+  key: string;
+  label: string;
+  /** "text" | "boolean" */
+  fieldType: string;
+  defaultValue: unknown;
+  helpText: string | null;
+}
+
+export interface ProviderMetadata {
+  id: string;
+  displayName: string;
+  /** Lucide icon name */
+  icon: string;
+  description: string;
+  credentialFields: ProviderFieldDef[];
+  mapFields: ProviderMapFieldDef[];
+  sourceNoun: string;
+  sourceNounPlural: string;
+  supportsEvents: boolean;
 }

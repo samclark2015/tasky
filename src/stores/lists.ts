@@ -38,7 +38,7 @@ export const useListStore = create<ListStore>()((set) => ({
       id,
       name,
       color: color ?? null,
-      caldavUrl: null,
+      remoteUrl: null,
       createdAt: now,
       updatedAt: now,
     };

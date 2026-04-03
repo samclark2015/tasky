@@ -2,8 +2,8 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ProviderCalendar, ProviderEvent, ProviderTask, PushResult, SyncOutput, SyncProvider,
-    TaskDeleteInput, TaskPushInput,
+    EventPushInput, ProviderCalendar, ProviderEvent, ProviderFieldDef, ProviderMapFieldDef, ProviderMetadata,
+    ProviderTask, PushResult, SyncOutput, SyncProvider, TaskDeleteInput, TaskPushInput,
 };
 
 const GITHUB_API_BASE: &str = "https://api.github.com";
@@ -226,6 +226,44 @@ impl SyncProvider for GitHubProvider {
         "github"
     }
 
+    fn metadata() -> ProviderMetadata {
+        ProviderMetadata {
+            id: "github".to_string(),
+            display_name: "GitHub".to_string(),
+            icon: "github".to_string(),
+            description: "Sync GitHub issues as tasks. Each linked repository becomes a list.".to_string(),
+            credential_fields: vec![
+                ProviderFieldDef {
+                    key: "token".to_string(),
+                    label: "Personal Access Token".to_string(),
+                    field_type: "password".to_string(),
+                    required: true,
+                    placeholder: Some("ghp_...".to_string()),
+                    help_text: Some("Requires repo scope. Generate at GitHub \u{2192} Settings \u{2192} Developer settings.".to_string()),
+                },
+            ],
+            map_fields: vec![
+                ProviderMapFieldDef {
+                    key: "query".to_string(),
+                    label: "Issue filter query".to_string(),
+                    field_type: "text".to_string(),
+                    default_value: Some(serde_json::Value::String("assignee:@me is:open".to_string())),
+                    help_text: Some("GitHub search syntax, e.g. \"assignee:@me is:open label:bug\". The repo filter is added automatically.".to_string()),
+                },
+                ProviderMapFieldDef {
+                    key: "read_only".to_string(),
+                    label: "Read only".to_string(),
+                    field_type: "boolean".to_string(),
+                    default_value: Some(serde_json::Value::Bool(false)),
+                    help_text: Some("Do not push local changes back to GitHub".to_string()),
+                },
+            ],
+            source_noun: "repository".to_string(),
+            source_noun_plural: "repositories".to_string(),
+            supports_events: false,
+        }
+    }
+
     async fn test_connection(config: &serde_json::Value) -> Result<bool, String> {
         let cfg = GitHubConfig::from_value(config)?;
         let client = make_client(&cfg.token)?;
@@ -308,6 +346,8 @@ impl SyncProvider for GitHubProvider {
         calendar_id: &str,
         pending: Vec<TaskPushInput>,
         deleted: Vec<TaskDeleteInput>,
+        _pending_events: Vec<EventPushInput>,
+        _event_uids_to_check: Vec<String>,
     ) -> Result<SyncOutput, String> {
         let cfg = GitHubConfig::from_value(config)?;
         let client = make_client(&cfg.token)?;
@@ -474,6 +514,9 @@ impl SyncProvider for GitHubProvider {
             delete_errors,
             remote_tasks,
             fetch_error,
+            event_pushed: vec![],
+            event_push_errors: vec![],
+            remote_events: vec![],
         })
     }
 

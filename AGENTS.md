@@ -14,6 +14,7 @@
 |---|---|---|
 | `project-map` | Living reference of project structure, architecture, and conventions | **Every session** -- load at start |
 | `planning` | Phased project planning and progress tracking | When working on planned features or checking status |
+| `docs` | User-facing documentation structure and maintenance protocol | When writing, reviewing, or updating docs after feature changes |
 
 ## Development Workflow
 

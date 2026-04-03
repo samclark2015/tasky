@@ -59,9 +59,9 @@ export const useTaskStore = create<TaskStore>()(
         timeEstimate: partial.timeEstimate ?? null,
         timeSpent: 0,
         notes: partial.notes ?? '',
-        etag: null,
-        caldavUid: null,
-        syncStatus: 'pending',
+        etag: partial.etag ?? null,
+        remoteId: partial.remoteId ?? null,
+        syncStatus: partial.syncStatus ?? 'pending',
         sourceEventUid: partial.sourceEventUid ?? null,
       };
       await repo.create(task);
@@ -79,7 +79,7 @@ export const useTaskStore = create<TaskStore>()(
       // CalDAV, mark it pending so the next sync pushes the change.
       const existing = get().tasks.get(id);
       const effectiveUpdates =
-        updates.syncStatus === undefined && existing?.caldavUid
+        updates.syncStatus === undefined && existing?.remoteId
           ? { ...updates, syncStatus: 'pending' as const }
           : updates;
       await repo.update(id, effectiveUpdates);

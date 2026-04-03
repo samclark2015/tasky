@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tasky_providers::{ProviderCalendar, ProviderEvent, SyncOutput, TaskDeleteInput, TaskPushInput};
+use tasky_providers::{EventPushInput, ProviderCalendar, ProviderEvent, ProviderMetadata, SyncOutput, TaskDeleteInput, TaskPushInput};
 
 #[derive(Debug, Serialize)]
 pub struct ConnectionResult {
@@ -49,9 +49,19 @@ pub async fn sync_account(
     calendar_href: String,
     pending_tasks: Vec<TaskPushInput>,
     deleted_hrefs: Vec<TaskDeleteInput>,
+    pending_events: Vec<EventPushInput>,
+    event_uids_to_check: Vec<String>,
 ) -> Result<SyncOutput, String> {
-    tasky_providers::dispatch::sync(&provider, &config, &calendar_href, pending_tasks, deleted_hrefs)
-        .await
+    tasky_providers::dispatch::sync(
+        &provider,
+        &config,
+        &calendar_href,
+        pending_tasks,
+        deleted_hrefs,
+        pending_events,
+        event_uids_to_check,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -74,4 +84,14 @@ pub async fn fetch_events(
         Ok(events) => Ok(FetchEventsResult { events, error: None }),
         Err(e) => Ok(FetchEventsResult { events: vec![], error: Some(e) }),
     }
+}
+
+#[tauri::command]
+pub fn list_providers() -> Vec<ProviderMetadata> {
+    tasky_providers::dispatch::list_providers()
+}
+
+#[tauri::command]
+pub fn get_provider_metadata(provider: String) -> Result<ProviderMetadata, String> {
+    tasky_providers::dispatch::provider_metadata(&provider)
 }

@@ -1,6 +1,6 @@
 mod ical;
 
-use ical::{parse_vevents, parse_vtodos, vtodo_to_ical, VTodo};
+use ical::{parse_vevents, parse_vtodos, vevent_to_ical, vtodo_to_ical, VTodo};
 use http::{Method, Uri};
 use hyper::body::Incoming;
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
@@ -14,8 +14,8 @@ use tower_http::auth::AddAuthorization;
 use tower_service::Service;
 
 use crate::{
-    ProviderCalendar, ProviderEvent, ProviderTask, PushResult, SyncOutput, SyncProvider,
-    TaskDeleteInput, TaskPushInput,
+    EventPushInput, ProviderCalendar, ProviderEvent, ProviderFieldDef, ProviderMapFieldDef, ProviderMetadata,
+    ProviderTask, PushResult, SyncOutput, SyncProvider, TaskDeleteInput, TaskPushInput,
 };
 
 // ── Internal HTTP client ──────────────────────────────────────────────────────
@@ -70,6 +70,53 @@ impl SyncProvider for CalDavProvider {
         "caldav"
     }
 
+    fn metadata() -> ProviderMetadata {
+        ProviderMetadata {
+            id: "caldav".to_string(),
+            display_name: "CalDAV".to_string(),
+            icon: "wifi".to_string(),
+            description: "Sync tasks with any CalDAV-compatible server (Nextcloud, Fastmail, iCloud, etc.)".to_string(),
+            credential_fields: vec![
+                ProviderFieldDef {
+                    key: "server_url".to_string(),
+                    label: "Server URL".to_string(),
+                    field_type: "url".to_string(),
+                    required: true,
+                    placeholder: Some("https://dav.example.com".to_string()),
+                    help_text: Some("The base URL of your CalDAV server".to_string()),
+                },
+                ProviderFieldDef {
+                    key: "username".to_string(),
+                    label: "Username".to_string(),
+                    field_type: "text".to_string(),
+                    required: true,
+                    placeholder: Some("your@email.com".to_string()),
+                    help_text: None,
+                },
+                ProviderFieldDef {
+                    key: "password".to_string(),
+                    label: "Password".to_string(),
+                    field_type: "password".to_string(),
+                    required: true,
+                    placeholder: None,
+                    help_text: Some("App-specific password recommended".to_string()),
+                },
+            ],
+            map_fields: vec![
+                ProviderMapFieldDef {
+                    key: "events_only".to_string(),
+                    label: "Events only (no tasks)".to_string(),
+                    field_type: "boolean".to_string(),
+                    default_value: Some(serde_json::Value::Bool(false)),
+                    help_text: Some("Only fetch calendar events, do not sync tasks".to_string()),
+                },
+            ],
+            source_noun: "calendar".to_string(),
+            source_noun_plural: "calendars".to_string(),
+            supports_events: true,
+        }
+    }
+
     async fn test_connection(config: &serde_json::Value) -> Result<bool, String> {
         let cfg = CalDavConfig::from_value(config)?;
         let client = make_client(&cfg.server_url, &cfg.username, &cfg.password)?;
@@ -119,6 +166,8 @@ impl SyncProvider for CalDavProvider {
         calendar_id: &str,
         pending: Vec<TaskPushInput>,
         deleted: Vec<TaskDeleteInput>,
+        pending_events: Vec<EventPushInput>,
+        event_uids_to_check: Vec<String>,
     ) -> Result<SyncOutput, String> {
         let cfg = CalDavConfig::from_value(config)?;
         let client = make_client(&cfg.server_url, &cfg.username, &cfg.password)?;
@@ -325,7 +374,185 @@ impl SyncProvider for CalDavProvider {
             }
         }
 
-        Ok(SyncOutput { pushed, push_errors, delete_errors, remote_tasks, fetch_error })
+        // ── 4. Push VEVENT-backed tasks ────────────────────────────────────────
+        let mut event_pushed: Vec<PushResult> = Vec::new();
+        let mut event_push_errors: Vec<String> = Vec::new();
+        let mut remote_events: Vec<ProviderEvent> = Vec::new();
+
+        if !pending_events.is_empty() || !event_uids_to_check.is_empty() {
+            // List all VEVENT hrefs to build uid → href map.
+            let vevent_hrefs: Vec<String> =
+                match ListCalendarResources::new(calendar_id).with_component("VEVENT") {
+                    Err(_) => vec![],
+                    Ok(req) => match client.request(req).await {
+                        Err(_) => vec![],
+                        Ok(r) => r.resources.iter().map(|res| res.href.clone()).collect(),
+                    },
+                };
+
+            // Determine which hrefs we need to actually fetch.
+            // We batch-fetch pending_event UIDs + watched UIDs, deduplicated.
+            let needed_uids: std::collections::HashSet<&str> = pending_events
+                .iter()
+                .map(|e| e.event_uid.as_str())
+                .chain(event_uids_to_check.iter().map(|s| s.as_str()))
+                .collect();
+
+            // Fetch all VEVENT content so we can build uid → {href, ical, etag}.
+            // (We fetch all because we cannot map uid → href without content.)
+            struct VEventResource {
+                href: String,
+                etag: String,
+                ical: String,
+                uid: String,
+            }
+            let mut uid_to_vevent: std::collections::HashMap<String, VEventResource> =
+                std::collections::HashMap::new();
+
+            if !vevent_hrefs.is_empty() && !needed_uids.is_empty() {
+                if let Ok(resp) = client
+                    .request(
+                        GetCalendarResources::new(calendar_id)
+                            .with_hrefs(vevent_hrefs.iter().map(|s| s.as_str())),
+                    )
+                    .await
+                {
+                    for resource in resp.resources {
+                        if let Ok(content) = resource.content {
+                            for vevent in parse_vevents(&content.data) {
+                                if needed_uids.contains(vevent.uid.as_str()) {
+                                    uid_to_vevent.insert(
+                                        vevent.uid.clone(),
+                                        VEventResource {
+                                            href: resource.href.clone(),
+                                            etag: content.etag.clone(),
+                                            ical: content.data.clone(),
+                                            uid: vevent.uid,
+                                        },
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Push each pending VEVENT update.
+            for event in &pending_events {
+                let (resource_href, existing_ical, server_etag) =
+                    if let Some(res) = uid_to_vevent.get(&event.event_uid) {
+                        (res.href.clone(), res.ical.clone(), Some(res.etag.clone()))
+                    } else {
+                        // Fallback href in case the event isn't on server yet.
+                        let href = format!(
+                            "{}/{}.ics",
+                            calendar_id.trim_end_matches('/'),
+                            event.event_uid
+                        );
+                        (href, String::new(), None)
+                    };
+
+                let ical_data = vevent_to_ical(&existing_ical, event);
+
+                let uri = match client.relative_uri(&resource_href) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        event_push_errors.push(format!(
+                            "Event {} (\"{}\") invalid href {}: {e}",
+                            event.local_id, event.title, resource_href
+                        ));
+                        continue;
+                    }
+                };
+
+                let request = {
+                    let mut builder = http::Request::builder()
+                        .method(Method::PUT)
+                        .uri(uri)
+                        .header("Content-Type", "text/calendar");
+                    if let Some(etag) = &server_etag {
+                        builder = builder.header("If-Match", etag);
+                    }
+                    match builder.body(ical_data) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            event_push_errors.push(format!(
+                                "Event {} (\"{}\") failed to build PUT request: {e}",
+                                event.local_id, event.title
+                            ));
+                            continue;
+                        }
+                    }
+                };
+
+                match client.request_raw(request).await {
+                    Ok((parts, _body)) if parts.status.is_success() => {
+                        let new_etag = parts
+                            .headers
+                            .get("etag")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string();
+                        event_pushed.push(PushResult {
+                            local_id: event.local_id.clone(),
+                            remote_id: event.event_uid.clone(),
+                            etag: new_etag,
+                            href: resource_href,
+                        });
+                    }
+                    Ok((parts, body)) => {
+                        let body_text = String::from_utf8_lossy(&body);
+                        event_push_errors.push(format!(
+                            "Event {} (\"{}\") PUT {} → {}{}",
+                            event.local_id,
+                            event.title,
+                            resource_href,
+                            parts.status,
+                            if body_text.trim().is_empty() {
+                                String::new()
+                            } else {
+                                format!(": {}", body_text.trim())
+                            }
+                        ));
+                    }
+                    Err(e) => event_push_errors.push(format!(
+                        "Event {} (\"{}\") PUT {}: {e}",
+                        event.local_id, event.title, resource_href
+                    )),
+                }
+            }
+
+            // ── 5. Return latest state of watched VEVENTs ──────────────────────
+            for uid in &event_uids_to_check {
+                if let Some(res) = uid_to_vevent.get(uid) {
+                    for vevent in parse_vevents(&res.ical) {
+                        remote_events.push(ProviderEvent {
+                            remote_id: vevent.uid,
+                            calendar_id: calendar_id.to_string(),
+                            title: vevent.summary,
+                            description: vevent.description,
+                            start: vevent.dtstart,
+                            end: vevent.dtend,
+                            location: vevent.location,
+                            color: vevent.color,
+                            etag: res.etag.clone(),
+                            href: res.href.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(SyncOutput {
+            pushed,
+            push_errors,
+            delete_errors,
+            remote_tasks,
+            fetch_error,
+            event_pushed,
+            event_push_errors,
+            remote_events,
+        })
     }
 
     async fn fetch_events(
@@ -367,6 +594,8 @@ impl SyncProvider for CalDavProvider {
                             end: vevent.dtend,
                             location: vevent.location,
                             color: vevent.color,
+                            etag: content.etag.clone(),
+                            href: resource.href.clone(),
                         });
                     }
                 }

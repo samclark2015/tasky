@@ -1,0 +1,9 @@
+{
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/samclark2015/tasky/releases/download/prerelease-channel/latest.json"
+      ]
+    }
+  }
+}

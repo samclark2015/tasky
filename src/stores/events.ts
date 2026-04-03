@@ -11,6 +11,10 @@ export interface CalendarEvent {
   dtend: string | null;
   location: string | null;
   color: string | null;
+  /** ETag from the CalDAV server. */
+  etag: string | null;
+  /** Resource href from the CalDAV server. */
+  href: string | null;
 }
 
 interface EventStore {
@@ -65,6 +69,8 @@ export const useEventStore = create<EventStore>()(
                 dtend: e.end,
                 location: e.location,
                 color: e.color,
+                etag: e.etag,
+                href: e.href,
               });
             }
             return { events: newEvents, loading: false };

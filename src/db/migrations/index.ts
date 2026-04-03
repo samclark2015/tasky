@@ -157,4 +157,76 @@ export const MIGRATIONS: { version: number; sql: string }[] = [
       CREATE INDEX IF NOT EXISTS idx_tasks_caldav_uid2 ON tasks(caldav_uid);
     `,
   },
+  {
+    version: 10,
+    sql: `
+      -- ── Unified provider tables ─────────────────────────────────────────────
+
+      CREATE TABLE IF NOT EXISTS provider_accounts (
+        id TEXT PRIMARY KEY,
+        provider_type TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        credentials TEXT NOT NULL DEFAULT '{}',
+        last_synced_at TEXT,
+        sync_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS provider_maps (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        list_id TEXT,
+        source_id TEXT NOT NULL,
+        source_name TEXT,
+        settings TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      -- Migrate CalDAV accounts
+      INSERT OR IGNORE INTO provider_accounts (id, provider_type, display_name, credentials, last_synced_at, sync_enabled, created_at, updated_at)
+        SELECT id, 'caldav', display_name,
+          json_object('server_url', server_url, 'username', username, 'password', password),
+          last_synced_at, sync_enabled, created_at, updated_at
+        FROM caldav_accounts;
+
+      -- Migrate GitHub accounts
+      INSERT OR IGNORE INTO provider_accounts (id, provider_type, display_name, credentials, last_synced_at, sync_enabled, created_at, updated_at)
+        SELECT id, 'github', display_name,
+          json_object('token', token),
+          last_synced_at, sync_enabled, created_at, updated_at
+        FROM github_accounts;
+
+      -- Migrate CalDAV calendar maps (list_id used as map id since it was PK)
+      INSERT OR IGNORE INTO provider_maps (id, account_id, list_id, source_id, source_name, settings, created_at, updated_at)
+        SELECT list_id, account_id, list_id, calendar_href, NULL,
+          json_object('events_only', events_only, 'sync_token', sync_token),
+          created_at, updated_at
+        FROM caldav_calendar_map;
+
+      -- Migrate GitHub repo maps (list_id used as map id since it was PK)
+      INSERT OR IGNORE INTO provider_maps (id, account_id, list_id, source_id, source_name, settings, created_at, updated_at)
+        SELECT list_id, account_id, list_id, repo_full_name, repo_full_name,
+          json_object('query', query, 'read_only', read_only),
+          created_at, updated_at
+        FROM github_repo_map;
+
+      -- Rename columns on tasks and lists
+      ALTER TABLE tasks RENAME COLUMN caldav_uid TO remote_id;
+      ALTER TABLE lists RENAME COLUMN caldav_url TO remote_url;
+
+      -- Drop old provider-specific tables
+      DROP TABLE IF EXISTS caldav_calendar_map;
+      DROP TABLE IF EXISTS caldav_accounts;
+      DROP TABLE IF EXISTS github_repo_map;
+      DROP TABLE IF EXISTS github_accounts;
+
+      -- Indexes
+      CREATE INDEX IF NOT EXISTS idx_provider_accounts_type ON provider_accounts(provider_type);
+      CREATE INDEX IF NOT EXISTS idx_provider_maps_account ON provider_maps(account_id);
+      CREATE INDEX IF NOT EXISTS idx_provider_maps_list ON provider_maps(list_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_remote_id ON tasks(remote_id);
+    `,
+  },
 ];
