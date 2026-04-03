@@ -24,6 +24,7 @@ apps/desktop/src-tauri/gen/apple/
 .env
 .env.local
 .env.*.local
+*.p12
 
 # OS
 .DS_Store
