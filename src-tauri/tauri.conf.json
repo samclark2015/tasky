@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "identifier": "com.tasky.app",
+  "identifier": "me.samclark.Tasky",
   "productName": "Tasky",
   "version": "0.0.1",
   "build": {
