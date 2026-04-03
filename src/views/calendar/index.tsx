@@ -25,10 +25,13 @@ export function CalendarView() {
   const { selectTask } = useUIStore();
   const { events: calendarEvents, fetchEvents, calendarVisibility, toggleCalendarVisibility } = useEventStore();
   const { accounts, maps } = useSyncStore();
-  const calendarMaps = maps.filter((m) => {
-    const account = accounts.find((a) => a.id === m.accountId);
-    return account?.providerType === 'caldav';
-  });
+  const calendarMaps = useMemo(
+    () => maps.filter((m) => {
+      const account = accounts.find((a) => a.id === m.accountId);
+      return account?.providerType === 'caldav';
+    }),
+    [maps, accounts]
+  );
   const { adapter } = useApp();
   const calendarRef = useRef<FullCalendar>(null);
   const [showNewTask, setShowNewTask] = useState(false);
@@ -38,6 +41,9 @@ export function CalendarView() {
     dueDate?: string; 
     timeEstimate?: number; 
     sourceEventUid?: string;
+    remoteId?: string | null;
+    etag?: string | null;
+    syncStatus?: Task['syncStatus'];
   }>({});
   const [contextMenu, setContextMenu] = useState<{ task: Task; x: number; y: number } | null>(null);
   const [eventPopover, setEventPopover] = useState<{ event: CalendarEvent; x: number; y: number } | null>(null);
@@ -107,6 +113,15 @@ export function CalendarView() {
   }, []);
 
   const events: EventInput[] = useMemo(() => {
+    // UIDs of VEVENTs that have been promoted to VEVENT-backed tasks.
+    // For these we render the task block only; suppress the raw VEVENT.
+    const promotedEventUids = new Set<string>();
+    for (const t of tasks.values()) {
+      if (t.sourceEventUid !== null && t.sourceEventUid === t.remoteId) {
+        promotedEventUids.add(t.sourceEventUid);
+      }
+    }
+
     const taskEvents: EventInput[] = Array.from(tasks.values())
       .filter((t) => t.dueDate && t.parentId === null)
       .map((t) => {
@@ -137,9 +152,9 @@ export function CalendarView() {
         };
       });
 
-    // Add calendar events, filtered by visibility
+    // Add calendar events, filtered by visibility and excluding promoted VEVENTs
     const eventInputs: EventInput[] = Array.from(calendarEvents.values())
-      .filter((e) => calendarVisibility[e.calendarHref] !== false)
+      .filter((e) => calendarVisibility[e.calendarHref] !== false && !promotedEventUids.has(e.uid))
       .map((e) => {
         const color = e.color ?? 'hsl(217.2 91.2% 59.8%)';
         return {
@@ -246,7 +261,11 @@ export function CalendarView() {
       description: event.description ?? '',
       dueDate,
       timeEstimate,
+      // VEVENT-backed task invariant: sourceEventUid === remoteId === event.uid
       sourceEventUid: event.uid,
+      remoteId: event.uid,
+      etag: event.etag,
+      syncStatus: 'synced',
     });
     setShowNewTask(true);
   }, []);

@@ -37,6 +37,8 @@ export interface ProviderEvent {
   end: string | null;
   location: string | null;
   color: string | null;
+  etag: string;
+  href: string;
 }
 
 export interface PushResult {
@@ -52,6 +54,24 @@ export interface SyncOutput {
   deleteErrors: string[];
   remoteTasks: ProviderTask[];
   fetchError: string | null;
+  eventPushed: PushResult[];
+  eventPushErrors: string[];
+  remoteEvents: ProviderEvent[];
+}
+
+export interface EventPushInput {
+  localId: string;
+  eventUid: string;
+  title: string;
+  description: string | null;
+  dtstart: string | null;
+  dtend: string | null;
+  tags: string[];
+  notes: string | null;
+  timeEstimate: number | null;
+  completed: boolean;
+  priority: string;
+  etag: string | null;
 }
 
 export interface TaskPushInput {

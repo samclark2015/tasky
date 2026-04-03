@@ -9,6 +9,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  EventPushInput,
   ProviderCalendar,
   ProviderEvent,
   ProviderFieldDef,
@@ -39,6 +40,8 @@ interface WireProviderEvent {
   end: string | null;
   location: string | null;
   color: string | null;
+  etag: string;
+  href: string;
 }
 
 interface WireProviderTask {
@@ -72,6 +75,9 @@ interface WireSyncOutput {
   delete_errors: string[];
   remote_tasks: WireProviderTask[];
   fetch_error: string | null;
+  event_pushed: WirePushResult[];
+  event_push_errors: string[];
+  remote_events: WireProviderEvent[];
 }
 
 // ── Deserialisers ─────────────────────────────────────────────────────────────
@@ -90,6 +96,8 @@ function fromWireEvent(w: WireProviderEvent): ProviderEvent {
     end: w.end,
     location: w.location,
     color: w.color,
+    etag: w.etag,
+    href: w.href,
   };
 }
 
@@ -125,6 +133,14 @@ function fromWireSyncOutput(w: WireSyncOutput): SyncOutput {
     deleteErrors: w.delete_errors,
     remoteTasks: w.remote_tasks.map(fromWireTask),
     fetchError: w.fetch_error,
+    eventPushed: w.event_pushed.map((p): PushResult => ({
+      localId: p.local_id,
+      remoteId: p.remote_id,
+      etag: p.etag,
+      href: p.href,
+    })),
+    eventPushErrors: w.event_push_errors,
+    remoteEvents: w.remote_events.map(fromWireEvent),
   };
 }
 
@@ -148,6 +164,23 @@ function toWirePushInput(t: TaskPushInput) {
     href: t.href,
     parent_remote_id: t.parentRemoteId,
     source_event_uid: t.sourceEventUid,
+  };
+}
+
+function toWireEventPushInput(e: EventPushInput) {
+  return {
+    local_id: e.localId,
+    event_uid: e.eventUid,
+    title: e.title,
+    description: e.description,
+    dtstart: e.dtstart,
+    dtend: e.dtend,
+    tags: e.tags,
+    notes: e.notes,
+    time_estimate: e.timeEstimate,
+    completed: e.completed,
+    priority: e.priority,
+    etag: e.etag,
   };
 }
 
@@ -185,6 +218,8 @@ export async function providerSync(
   calendarId: string,
   pending: TaskPushInput[],
   deleted: TaskDeleteInput[],
+  pendingEvents: EventPushInput[] = [],
+  eventUidsToCheck: string[] = [],
 ): Promise<SyncOutput> {
   const result = await invoke<WireSyncOutput>('sync_account', {
     provider: providerId,
@@ -192,6 +227,8 @@ export async function providerSync(
     calendarHref: calendarId,
     pendingTasks: pending.map(toWirePushInput),
     deletedHrefs: deleted.map((d) => ({ href: d.href, etag: d.etag })),
+    pendingEvents: pendingEvents.map(toWireEventPushInput),
+    eventUidsToCheck,
   });
   return fromWireSyncOutput(result);
 }

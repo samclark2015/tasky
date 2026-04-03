@@ -87,4 +87,8 @@ export interface CalendarEvent {
   dtend: string | null;
   location: string | null;
   color: string | null;
+  /** ETag from the CalDAV server (populated for VEVENT-backed tasks). */
+  etag: string | null;
+  /** Resource href from the CalDAV server (populated for VEVENT-backed tasks). */
+  href: string | null;
 }

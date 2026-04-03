@@ -30,6 +30,16 @@ pub struct VEvent {
     pub dtend: Option<String>,
     pub location: Option<String>,
     pub color: Option<String>,
+    /// Set by Tasky via X-TASKY-COMPLETED
+    pub completed: bool,
+    /// Set by Tasky via X-TASKY-PRIORITY (e.g. "high", "medium", "low")
+    pub priority: Option<String>,
+    /// Set by Tasky via X-TASKY-NOTES
+    pub notes: Option<String>,
+    /// Set by Tasky via X-TASKY-TIME-ESTIMATE (minutes)
+    pub time_estimate: Option<i64>,
+    /// Set via CATEGORIES property
+    pub categories: Vec<String>,
 }
 
 pub fn parse_vtodos(ical_text: &str) -> Vec<VTodo> {
@@ -244,6 +254,41 @@ fn event_to_vevent(event: &Event) -> Option<VEvent> {
         }
     });
 
+    let completed = event
+        .property_value("X-TASKY-COMPLETED")
+        .map(|s| s.eq_ignore_ascii_case("TRUE"))
+        .unwrap_or(false);
+    let priority = event
+        .property_value("X-TASKY-PRIORITY")
+        .map(|s| s.to_string());
+    let notes = event.property_value("X-TASKY-NOTES").map(|s| s.to_string());
+    let time_estimate = event
+        .property_value("X-TASKY-TIME-ESTIMATE")
+        .and_then(|s| s.parse::<i64>().ok());
+
+    let categories: Vec<String> = event
+        .multi_properties()
+        .get("CATEGORIES")
+        .map(|props| {
+            props
+                .iter()
+                .flat_map(|p| p.value().split(','))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_else(|| {
+            event
+                .property_value("CATEGORIES")
+                .map(|raw| {
+                    raw.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default()
+        });
+
     Some(VEvent {
         uid,
         summary,
@@ -252,5 +297,175 @@ fn event_to_vevent(event: &Event) -> Option<VEvent> {
         dtend,
         location,
         color,
+        completed,
+        priority,
+        notes,
+        time_estimate,
+        categories,
     })
+}
+
+// ── VEVENT write-back ─────────────────────────────────────────────────────────
+
+/// Read-modify-write a VEVENT iCal string, overlaying Tasky-managed properties
+/// while preserving all server-side fields (ATTENDEE, RRULE, TZID, etc.).
+pub fn vevent_to_ical(existing_ical: &str, updates: &crate::EventPushInput) -> String {
+    // Properties fully managed by Tasky — existing values are removed and replaced.
+    const TASKY_MANAGED: &[&str] = &[
+        "SUMMARY",
+        "DESCRIPTION",
+        "CATEGORIES",
+        "X-TASKY-COMPLETED",
+        "X-TASKY-PRIORITY",
+        "X-TASKY-NOTES",
+        "X-TASKY-TIME-ESTIMATE",
+    ];
+
+    if existing_ical.trim().is_empty() {
+        return build_minimal_vevent(updates);
+    }
+
+    // Unfold RFC 5545 line continuations before processing.
+    let unfolded = unfold_ical(existing_ical);
+
+    // DTSTART / DTEND are replaced only when we have new values.
+    let replace_dtstart = updates.dtstart.is_some();
+    let replace_dtend = updates.dtend.is_some();
+
+    let filtered_lines: Vec<&str> = unfolded
+        .lines()
+        .filter(|line| {
+            let prop_name = line
+                .split(|c| c == ':' || c == ';')
+                .next()
+                .unwrap_or("")
+                .to_ascii_uppercase();
+            let is_tasky = TASKY_MANAGED.contains(&prop_name.as_str());
+            let is_dtstart = prop_name == "DTSTART" && replace_dtstart;
+            let is_dtend = prop_name == "DTEND" && replace_dtend;
+            !is_tasky && !is_dtstart && !is_dtend
+        })
+        .collect();
+
+    // Build replacement property lines.
+    let mut new_lines: Vec<String> = Vec::new();
+    new_lines.push(format!("SUMMARY:{}", escape_ical_text(&updates.title)));
+    if let Some(desc) = &updates.description {
+        if !desc.is_empty() {
+            new_lines.push(format!("DESCRIPTION:{}", escape_ical_text(desc)));
+        }
+    }
+    if let Some(dtstart) = &updates.dtstart {
+        new_lines.push(ical_datetime_prop("DTSTART", dtstart));
+    }
+    if let Some(dtend) = &updates.dtend {
+        new_lines.push(ical_datetime_prop("DTEND", dtend));
+    }
+    if !updates.tags.is_empty() {
+        let escaped: Vec<String> = updates.tags.iter().map(|t| escape_ical_text(t)).collect();
+        new_lines.push(format!("CATEGORIES:{}", escaped.join(",")));
+    }
+    if updates.completed {
+        new_lines.push("X-TASKY-COMPLETED:TRUE".to_string());
+    }
+    new_lines.push(format!(
+        "X-TASKY-PRIORITY:{}",
+        escape_ical_text(&updates.priority)
+    ));
+    if let Some(notes) = &updates.notes {
+        if !notes.is_empty() {
+            new_lines.push(format!("X-TASKY-NOTES:{}", escape_ical_text(notes)));
+        }
+    }
+    if let Some(te) = updates.time_estimate {
+        new_lines.push(format!("X-TASKY-TIME-ESTIMATE:{}", te));
+    }
+
+    // Insert new lines just before END:VEVENT.
+    let mut result_lines: Vec<String> = Vec::new();
+    for line in &filtered_lines {
+        if line.trim().eq_ignore_ascii_case("END:VEVENT") {
+            result_lines.extend(new_lines.iter().cloned());
+        }
+        result_lines.push(line.to_string());
+    }
+
+    // Ensure CRLF line endings and trailing newline.
+    let mut output = result_lines.join("\r\n");
+    if !output.ends_with("\r\n") {
+        output.push_str("\r\n");
+    }
+    output
+}
+
+fn unfold_ical(ical: &str) -> String {
+    // RFC 5545 §3.1: CRLF followed by a whitespace character is a line fold.
+    ical.replace("\r\n ", "")
+        .replace("\r\n\t", "")
+        // Also handle bare LF (some servers omit CR).
+        .replace("\n ", "")
+        .replace("\n\t", "")
+}
+
+fn escape_ical_text(s: &str) -> String {
+    // RFC 5545 TEXT escaping.
+    s.replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+}
+
+fn ical_datetime_prop(name: &str, iso: &str) -> String {
+    // Convert ISO 8601 to iCal UTC format, or date-only, or pass through.
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) {
+        let utc = dt.with_timezone(&chrono::Utc);
+        format!("{}:{}", name, utc.format("%Y%m%dT%H%M%SZ"))
+    } else if let Ok(d) = chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d") {
+        format!("{}:{}", name, d.format("%Y%m%d"))
+    } else {
+        format!("{}:{}", name, iso)
+    }
+}
+
+fn build_minimal_vevent(updates: &crate::EventPushInput) -> String {
+    let mut lines = vec![
+        "BEGIN:VCALENDAR".to_string(),
+        "VERSION:2.0".to_string(),
+        "PRODID:-//Tasky//EN".to_string(),
+        "BEGIN:VEVENT".to_string(),
+        format!("UID:{}", updates.event_uid),
+    ];
+    if let Some(dtstart) = &updates.dtstart {
+        lines.push(ical_datetime_prop("DTSTART", dtstart));
+    }
+    if let Some(dtend) = &updates.dtend {
+        lines.push(ical_datetime_prop("DTEND", dtend));
+    }
+    lines.push(format!("SUMMARY:{}", escape_ical_text(&updates.title)));
+    if let Some(desc) = &updates.description {
+        if !desc.is_empty() {
+            lines.push(format!("DESCRIPTION:{}", escape_ical_text(desc)));
+        }
+    }
+    if !updates.tags.is_empty() {
+        let escaped: Vec<String> = updates.tags.iter().map(|t| escape_ical_text(t)).collect();
+        lines.push(format!("CATEGORIES:{}", escaped.join(",")));
+    }
+    if updates.completed {
+        lines.push("X-TASKY-COMPLETED:TRUE".to_string());
+    }
+    lines.push(format!("X-TASKY-PRIORITY:{}", updates.priority));
+    if let Some(notes) = &updates.notes {
+        if !notes.is_empty() {
+            lines.push(format!("X-TASKY-NOTES:{}", escape_ical_text(notes)));
+        }
+    }
+    if let Some(te) = updates.time_estimate {
+        lines.push(format!("X-TASKY-TIME-ESTIMATE:{}", te));
+    }
+    lines.push("END:VEVENT".to_string());
+    lines.push("END:VCALENDAR".to_string());
+    let mut output = lines.join("\r\n");
+    output.push_str("\r\n");
+    output
 }

@@ -8,7 +8,8 @@ import {
 } from '@/db/repository';
 import { generateId } from '@/lib/utils';
 import { providerTestConnection, providerDiscoverCalendars, providerSync } from '@/providers/ipc';
-import type { ProviderCalendar, TaskPushInput } from '@/providers/types';
+import type { ProviderCalendar, TaskPushInput, EventPushInput } from '@/providers/types';
+import { useEventStore } from '@/stores/events';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'success';
 
@@ -241,6 +242,12 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       errors: [],
     };
 
+    // VEVENT-backed invariant: sourceEventUid === remoteId (both non-null).
+    // These must NOT be pushed as VTODOs; they are handled in the separate VEVENT pass below.
+    const isVEventBacked = (t: Task) =>
+      t.sourceEventUid !== null && t.sourceEventUid === t.remoteId;
+
+    // ── VTODO map loop ────────────────────────────────────────────────────────
     for (const map of maps) {
       // Events-only sources (CalDAV) have no task sync.
       if (map.settings.events_only === true) continue;
@@ -251,10 +258,12 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       };
 
       const listTasks = tasks.filter((t) => t.listId === map.listId);
+
       const pendingTasks = listTasks.filter(
-        (t) => t.syncStatus === 'pending' && t.parentId === null
+        (t) => t.syncStatus === 'pending' && t.parentId === null && !isVEventBacked(t)
       );
 
+      // Build VTODO push inputs only (no event params here)
       const pushInputs: TaskPushInput[] = pendingTasks.map((t) => ({
         localId: t.id,
         remoteId: t.remoteId ?? null,
@@ -280,6 +289,8 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
           config,
           map.sourceId,
           pushInputs,
+          [],
+          [],
           [],
         );
 
@@ -354,6 +365,115 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
         if (syncResult.fetchError) result.errors.push(syncResult.fetchError);
       } catch (e) {
         result.errors.push(`${account.providerType} ${map.sourceId}: ${String(e)}`);
+      }
+    }
+
+    // ── VEVENT-backed task sync (separate pass per source calendar) ───────────
+    // VEVENTs live in events-only CalDAV calendars, not in the VTODO calendar
+    // addressed by map.sourceId. We look up each task's calendarHref from the
+    // event store and group tasks by that href.
+    {
+      const { events: storedCalEvents } = useEventStore.getState();
+
+      // Build uid → calendarHref from the in-memory event store
+      const uidToCalHref = new Map<string, string>();
+      for (const [, ev] of storedCalEvents) {
+        uidToCalHref.set(ev.uid, ev.calendarHref);
+      }
+
+      // All sourceIds that belong to this account (used to filter out foreign calendars)
+      const allAccountSourceIds = new Set(
+        get().maps.filter((m) => m.accountId === accountId).map((m) => m.sourceId)
+      );
+
+      // Group VEVENT-backed tasks by their calendarHref
+      const veventsByCalendar = new Map<string, { pending: EventPushInput[]; watched: string[] }>();
+      for (const t of tasks) {
+        if (!isVEventBacked(t)) continue;
+        const calHref = uidToCalHref.get(t.remoteId!);
+        if (!calHref || !allAccountSourceIds.has(calHref)) continue;
+
+        if (!veventsByCalendar.has(calHref)) {
+          veventsByCalendar.set(calHref, { pending: [], watched: [] });
+        }
+        const entry = veventsByCalendar.get(calHref)!;
+        entry.watched.push(t.remoteId!);
+
+        if (t.syncStatus === 'pending') {
+          const dtstart = t.dueDate ?? null;
+          let dtend: string | null = null;
+          if (dtstart && t.timeEstimate) {
+            dtend = new Date(new Date(dtstart).getTime() + t.timeEstimate * 60_000).toISOString();
+          }
+          entry.pending.push({
+            localId: t.id,
+            eventUid: t.remoteId!,
+            title: t.title,
+            description: t.description || null,
+            dtstart,
+            dtend,
+            tags: t.tags,
+            notes: t.notes || null,
+            timeEstimate: t.timeEstimate ?? null,
+            completed: t.completed,
+            priority: t.priority,
+            etag: t.etag ?? '',
+          });
+        }
+      }
+
+      for (const [calHref, { pending, watched }] of veventsByCalendar) {
+        try {
+          const evConfig: Record<string, unknown> = { ...account.credentials };
+          const evResult = await providerSync(
+            account.providerType,
+            evConfig,
+            calHref,
+            [],
+            [],
+            pending,
+            watched,
+          );
+
+          for (const pushed of evResult.eventPushed) {
+            await taskRepo.update(pushed.localId, {
+              etag: pushed.etag || null,
+              syncStatus: 'synced',
+            });
+            result.updated++;
+          }
+          result.errors.push(...evResult.eventPushErrors);
+
+          for (const remote of evResult.remoteEvents) {
+            const existingTask = tasks.find(
+              (t) => t.remoteId === remote.remoteId && isVEventBacked(t)
+            );
+            if (!existingTask) continue;
+            if (existingTask.syncStatus === 'pending') { result.conflicts++; continue; }
+            if (existingTask.etag && existingTask.etag === remote.etag) continue;
+
+            const dueDate = remote.start ?? null;
+            let timeEstimate: number | null = null;
+            if (remote.start && remote.end) {
+              const mins = Math.round(
+                (new Date(remote.end).getTime() - new Date(remote.start).getTime()) / 60_000
+              );
+              timeEstimate = mins > 0 ? mins : null;
+            }
+
+            await taskRepo.update(existingTask.id, {
+              title: remote.title,
+              description: remote.description ?? '',
+              dueDate,
+              timeEstimate,
+              etag: remote.etag,
+              syncStatus: 'synced',
+            });
+            result.updated++;
+          }
+        } catch (e) {
+          result.errors.push(`${account.providerType} ${calHref}: ${String(e)}`);
+        }
       }
     }
 

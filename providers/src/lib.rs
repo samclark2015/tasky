@@ -81,7 +81,7 @@ pub struct ProviderTask {
     pub href: String,
 }
 
-/// A calendar event (read-only) supplied by a provider for display purposes.
+/// A calendar event supplied by a provider (read for display; writable for VEVENT-backed tasks).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderEvent {
     pub remote_id: String,
@@ -92,6 +92,10 @@ pub struct ProviderEvent {
     pub end: Option<String>,
     pub location: Option<String>,
     pub color: Option<String>,
+    /// Opaque cache-buster (ETag) from the server.
+    pub etag: String,
+    /// Full resource locator within the provider (href, URL, API path…)
+    pub href: String,
 }
 
 /// Result of a push-to-remote operation for a single task.
@@ -112,6 +116,29 @@ pub struct SyncOutput {
     pub delete_errors: Vec<String>,
     pub remote_tasks: Vec<ProviderTask>,
     pub fetch_error: Option<String>,
+    /// Results of VEVENT push operations (for VEVENT-backed tasks).
+    pub event_pushed: Vec<PushResult>,
+    pub event_push_errors: Vec<String>,
+    /// Latest state of watched VEVENTs (inbound change detection).
+    pub remote_events: Vec<ProviderEvent>,
+}
+
+/// Input describing a VEVENT-backed task that needs to be pushed back to the calendar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventPushInput {
+    pub local_id: String,
+    pub event_uid: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub dtstart: Option<String>,
+    pub dtend: Option<String>,
+    pub tags: Vec<String>,
+    pub notes: Option<String>,
+    pub time_estimate: Option<i64>,
+    pub completed: bool,
+    pub priority: String,
+    /// Current ETag of the VEVENT as stored locally.
+    pub etag: Option<String>,
 }
 
 /// Input describing a local task that needs to be pushed.
@@ -162,6 +189,8 @@ pub trait SyncProvider {
         calendar_id: &str,
         pending: Vec<TaskPushInput>,
         deleted: Vec<TaskDeleteInput>,
+        pending_events: Vec<EventPushInput>,
+        event_uids_to_check: Vec<String>,
     ) -> Result<SyncOutput, String>;
 
     async fn fetch_events(
@@ -208,10 +237,12 @@ pub mod dispatch {
         calendar_id: &str,
         pending: Vec<TaskPushInput>,
         deleted: Vec<TaskDeleteInput>,
+        pending_events: Vec<EventPushInput>,
+        event_uids_to_check: Vec<String>,
     ) -> Result<SyncOutput, String> {
         match provider {
-            "caldav" => caldav::CalDavProvider::sync(config, calendar_id, pending, deleted).await,
-            "github" => github::GitHubProvider::sync(config, calendar_id, pending, deleted).await,
+            "caldav" => caldav::CalDavProvider::sync(config, calendar_id, pending, deleted, pending_events, event_uids_to_check).await,
+            "github" => github::GitHubProvider::sync(config, calendar_id, pending, deleted, pending_events, event_uids_to_check).await,
             _ => Err(format!("unknown provider: {provider}")),
         }
     }

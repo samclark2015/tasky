@@ -59,9 +59,9 @@ export const useTaskStore = create<TaskStore>()(
         timeEstimate: partial.timeEstimate ?? null,
         timeSpent: 0,
         notes: partial.notes ?? '',
-        etag: null,
-        remoteId: null,
-        syncStatus: 'pending',
+        etag: partial.etag ?? null,
+        remoteId: partial.remoteId ?? null,
+        syncStatus: partial.syncStatus ?? 'pending',
         sourceEventUid: partial.sourceEventUid ?? null,
       };
       await repo.create(task);

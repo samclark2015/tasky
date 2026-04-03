@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ProviderCalendar, ProviderEvent, ProviderFieldDef, ProviderMapFieldDef, ProviderMetadata,
+    EventPushInput, ProviderCalendar, ProviderEvent, ProviderFieldDef, ProviderMapFieldDef, ProviderMetadata,
     ProviderTask, PushResult, SyncOutput, SyncProvider, TaskDeleteInput, TaskPushInput,
 };
 
@@ -346,6 +346,8 @@ impl SyncProvider for GitHubProvider {
         calendar_id: &str,
         pending: Vec<TaskPushInput>,
         deleted: Vec<TaskDeleteInput>,
+        _pending_events: Vec<EventPushInput>,
+        _event_uids_to_check: Vec<String>,
     ) -> Result<SyncOutput, String> {
         let cfg = GitHubConfig::from_value(config)?;
         let client = make_client(&cfg.token)?;
@@ -512,6 +514,9 @@ impl SyncProvider for GitHubProvider {
             delete_errors,
             remote_tasks,
             fetch_error,
+            event_pushed: vec![],
+            event_push_errors: vec![],
+            remote_events: vec![],
         })
     }
 

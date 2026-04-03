@@ -21,6 +21,9 @@ interface TaskModalProps {
     parentId?: string; 
     timeEstimate?: number;
     sourceEventUid?: string;
+    remoteId?: string | null;
+    etag?: string | null;
+    syncStatus?: Task['syncStatus'];
   };
   onClose: () => void;
 }
@@ -108,6 +111,9 @@ export function TaskModal({ task, defaults, onClose }: TaskModalProps) {
           recurrence,
           parentId: defaults?.parentId ?? null,
           sourceEventUid: defaults?.sourceEventUid ?? null,
+          remoteId: defaults?.remoteId ?? null,
+          etag: defaults?.etag ?? null,
+          syncStatus: defaults?.syncStatus,
         });
       }
       onClose();
