@@ -1,21 +1,33 @@
 mod providers;
+mod app_sync;
 
 use std::sync::Mutex;
-use tauri::{Runtime, menu::CheckMenuItem};
+use tauri::Runtime;
 use providers::{discover_calendars, fetch_events, get_provider_metadata, list_providers, sync_account, test_connection};
+use app_sync::{
+    app_sync_setup, app_sync_delete, app_sync_test,
+    app_sync_push, app_sync_pull, app_sync_status,
+    app_sync_generate_link_code, app_sync_join,
+};
 
+#[cfg(desktop)]
+use tauri::menu::CheckMenuItem;
+
+#[cfg(desktop)]
 struct ThemeMenuState<R: Runtime> {
     light: CheckMenuItem<R>,
     dark: CheckMenuItem<R>,
     system: CheckMenuItem<R>,
 }
 
+#[cfg(desktop)]
 fn apply_theme_checks<R: Runtime>(state: &ThemeMenuState<R>, theme: &str) {
     let _ = state.light.set_checked(theme == "light");
     let _ = state.dark.set_checked(theme == "dark");
     let _ = state.system.set_checked(theme == "system");
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn sync_theme(theme: String, state: tauri::State<Mutex<ThemeMenuState<tauri::Wry>>>) {
     if let Ok(s) = state.lock() {
@@ -41,10 +53,17 @@ mod dev_commands {
     }
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // reqwest 0.13 (pulled in by tauri-plugin-updater) uses rustls 0.23, which
+    // requires a crypto provider to be installed before any TLS client is created.
+    // ring is already in the tree via hyper-rustls; install it as the default.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     #[cfg(debug_assertions)]
     let builder = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            #[cfg(desktop)]
             sync_theme,
             dev_commands::reset_database,
             test_connection,
@@ -53,10 +72,19 @@ pub fn run() {
             fetch_events,
             list_providers,
             get_provider_metadata,
+            app_sync_setup,
+            app_sync_delete,
+            app_sync_test,
+            app_sync_push,
+            app_sync_pull,
+            app_sync_status,
+            app_sync_generate_link_code,
+            app_sync_join,
         ]);
     #[cfg(not(debug_assertions))]
     let builder = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            #[cfg(desktop)]
             sync_theme,
             test_connection,
             discover_calendars,
@@ -64,6 +92,14 @@ pub fn run() {
             fetch_events,
             list_providers,
             get_provider_metadata,
+            app_sync_setup,
+            app_sync_delete,
+            app_sync_test,
+            app_sync_push,
+            app_sync_pull,
+            app_sync_status,
+            app_sync_generate_link_code,
+            app_sync_join,
         ]);
 
     builder
@@ -73,78 +109,84 @@ pub fn run() {
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
-            use tauri::menu::{CheckMenuItem, Submenu};
-
-            let light  = CheckMenuItem::with_id(app, "theme_light",  "Light",  true, false, None::<&str>)?;
-            let dark   = CheckMenuItem::with_id(app, "theme_dark",   "Dark",   true, false, None::<&str>)?;
-            let system = CheckMenuItem::with_id(app, "theme_system", "System", true, true,  None::<&str>)?;
-            let theme_menu = Submenu::with_items(app, "Theme", true, &[&light, &dark, &system])?;
 
             use tauri::Manager;
-            app.manage(Mutex::new(ThemeMenuState {
-                light: light.clone(),
-                dark: dark.clone(),
-                system: system.clone(),
-            }));
+            app.manage(Mutex::new(app_sync::AppSyncStateInner::default()));
 
-            if let Some(menu) = app.menu() {
-                if let Some(view_item) = menu.items()?.get(3) {
-                    if let tauri::menu::MenuItemKind::Submenu(view_menu) = view_item {
-                        view_menu.append(&theme_menu)?;
-                    }
-                }
+            #[cfg(desktop)]
+            {
+                use tauri::menu::{CheckMenuItem, Submenu};
 
-                #[cfg(debug_assertions)]
-                {
-                    use tauri::menu::MenuItem;
+                let light  = CheckMenuItem::with_id(app, "theme_light",  "Light",  true, false, None::<&str>)?;
+                let dark   = CheckMenuItem::with_id(app, "theme_dark",   "Dark",   true, false, None::<&str>)?;
+                let system = CheckMenuItem::with_id(app, "theme_system", "System", true, true,  None::<&str>)?;
+                let theme_menu = Submenu::with_items(app, "Theme", true, &[&light, &dark, &system])?;
 
-                    let items = menu.items()?;
-                    let end_pos = items.len().saturating_sub(1);
-                    let reset_item = MenuItem::with_id(app, "reset_db", "Reset Database", true, None::<&str>)?;
-                    let reload_item = MenuItem::with_id(app, "reload_window", "Reload", true, None::<&str>)?;
-                    let dev_menu = Submenu::with_items(app, "Developer", true, &[&reset_item, &reload_item])?;
-                    menu.insert(&dev_menu, end_pos)?;
-                }
-            }
+                app.manage(Mutex::new(ThemeMenuState {
+                    light: light.clone(),
+                    dark: dark.clone(),
+                    system: system.clone(),
+                }));
 
-            app.on_menu_event(|app, event| {
-                use tauri::Manager;
-                let theme = match event.id().as_ref() {
-                    "theme_light"  => Some("light"),
-                    "theme_dark"   => Some("dark"),
-                    "theme_system" => Some("system"),
-                    _ => None,
-                };
-                if let Some(t) = theme {
-                    if let Some(state) = app.try_state::<Mutex<ThemeMenuState<tauri::Wry>>>() {
-                        if let Ok(s) = state.lock() {
-                            apply_theme_checks(&s, t);
+                if let Some(menu) = app.menu() {
+                    if let Some(view_item) = menu.items()?.get(3) {
+                        if let tauri::menu::MenuItemKind::Submenu(view_menu) = view_item {
+                            view_menu.append(&theme_menu)?;
                         }
                     }
-                    if let Some(win) = app.get_webview_window("main") {
-                        use tauri::Emitter;
-                        let _ = win.emit("set-theme", t);
+
+                    #[cfg(debug_assertions)]
+                    {
+                        use tauri::menu::MenuItem;
+
+                        let items = menu.items()?;
+                        let end_pos = items.len().saturating_sub(1);
+                        let reset_item = MenuItem::with_id(app, "reset_db", "Reset Database", true, None::<&str>)?;
+                        let reload_item = MenuItem::with_id(app, "reload_window", "Reload", true, None::<&str>)?;
+                        let dev_menu = Submenu::with_items(app, "Developer", true, &[&reset_item, &reload_item])?;
+                        menu.insert(&dev_menu, end_pos)?;
                     }
-                    return;
                 }
 
-                #[cfg(debug_assertions)]
-                if event.id() == "reset_db" {
-                    match dev_commands::reset_database(app.clone()) {
-                        Ok(_) => {
-                            eprintln!("[dev] Database reset. Reloading…");
-                            if let Some(win) = app.get_webview_window("main") {
-                                let _: tauri::Result<()> = win.eval("location.reload()");
+                app.on_menu_event(|app, event| {
+                    use tauri::Manager;
+                    let theme = match event.id().as_ref() {
+                        "theme_light"  => Some("light"),
+                        "theme_dark"   => Some("dark"),
+                        "theme_system" => Some("system"),
+                        _ => None,
+                    };
+                    if let Some(t) = theme {
+                        if let Some(state) = app.try_state::<Mutex<ThemeMenuState<tauri::Wry>>>() {
+                            if let Ok(s) = state.lock() {
+                                apply_theme_checks(&s, t);
                             }
                         }
-                        Err(e) => eprintln!("[dev] Failed to reset database: {e}"),
+                        if let Some(win) = app.get_webview_window("main") {
+                            use tauri::Emitter;
+                            let _ = win.emit("set-theme", t);
+                        }
+                        return;
                     }
-                } else if event.id() == "reload_window" {
-                    if let Some(win) = app.get_webview_window("main") {
-                        let _: tauri::Result<()> = win.eval("location.reload()");
+
+                    #[cfg(debug_assertions)]
+                    if event.id() == "reset_db" {
+                        match dev_commands::reset_database(app.clone()) {
+                            Ok(_) => {
+                                eprintln!("[dev] Database reset. Reloading…");
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _: tauri::Result<()> = win.eval("location.reload()");
+                                }
+                            }
+                            Err(e) => eprintln!("[dev] Failed to reset database: {e}"),
+                        }
+                    } else if event.id() == "reload_window" {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _: tauri::Result<()> = win.eval("location.reload()");
+                        }
                     }
-                }
-            });
+                });
+            }
 
             Ok(())
         })

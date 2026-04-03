@@ -37,6 +37,16 @@ http = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 tasky-providers = { path = "../providers" }
+# App Sync dependencies
+rusqlite = "0.31"
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", features = ["simple"] }
+sha2 = "0.10"
+rand = "0.8"
+keyring = "3"
+base64 = "0.22"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+rustls = { version = "0.23", features = ["ring"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
