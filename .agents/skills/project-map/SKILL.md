@@ -7,7 +7,7 @@ description: Comprehensive reference of Tasky's project structure, architecture,
 
 ## Purpose
 
-This is a **modular** living reference for the Tasky codebase. The root file (this one) provides the project overview, directory tree, and architecture. Detailed documentation is split into focused modules that can be loaded individually when needed.
+This is a **modular** living reference for the Tasky codebase. The root file (this one) provides the project overview, architecture, and a script to generate a live directory tree. Detailed documentation is split into focused modules that can be loaded individually when needed.
 
 **Keep these files updated** when you add new files, modules, views, stores, or change architectural patterns.
 
@@ -53,111 +53,15 @@ This is a **modular** living reference for the Tasky codebase. The root file (th
 
 ## 2. Directory Tree
 
+Run the following script to see an up-to-date tree of all project files (excludes build artifacts, `node_modules`, `.git`, etc.):
+
+```bash
+node .agents/skills/project-map/scripts/tree.js
+# or
+.agents/skills/project-map/scripts/tree.sh
 ```
-tasky2/
-├── AGENTS.md                    # Agent instructions
-├── Cargo.toml                   # Rust workspace root (members: src-tauri, providers)
-├── package.json                 # Frontend manifest (pnpm)
-├── tsconfig.json                # Strict TS, path alias @/* -> ./src/*
-├── vite.config.ts               # React plugin, @/ alias, port 1420, Tauri HMR
-├── tailwind.config.js           # Dark mode via class, shadcn/ui HSL tokens
-├── postcss.config.js            # Tailwind + Autoprefixer
-├── index.html                   # Vite SPA entry, mounts at #root
-│
-├── src/                         # FRONTEND SOURCE
-│   ├── main.tsx                 # Entry: StrictMode > ThemeProvider > AppProvider > App
-│   ├── App.tsx                  # Root component: ViewRouter, keyboard shortcuts, theme sync
-│   ├── index.css                # Tailwind directives + HSL design tokens (light/dark)
-│   ├── components/
-│   │   ├── app-provider.tsx     # DB init, migration, store hydration, AutoSyncMount
-│   │   ├── theme-provider.tsx   # Theme context wrapping Zustand UI store
-│   │   ├── layout/
-│   │   │   ├── index.ts         # Barrel: AppShell, Sidebar, DetailsPanel
-│   │   │   ├── app-shell.tsx    # 3-column layout: sidebar | main | details
-│   │   │   ├── sidebar.tsx      # Nav items, list list, sync button, settings
-│   │   │   ├── details-panel.tsx# Task detail editing (inline fields, subtasks)
-│   │   │   └── view-header.tsx  # Reusable header with title + actions slot
-│   │   ├── modals/
-│   │   │   ├── task-modal.tsx   # Create/edit task (Radix Dialog)
-│   │   │   └── list-modal.tsx   # Create/edit/delete list (Radix Dialog)
-│   │   └── task/
-│   │       ├── task-item.tsx    # Recursive task row (subtasks, context menu)
-│   │       ├── task-context-menu.tsx  # Custom right-click menu (portal)
-│   │       ├── quick-add.tsx    # Inline title-only task creation input
-│   │       ├── tag-input.tsx    # Tag pills with autocomplete
-│   │       └── recurrence-editor.tsx  # Recurrence rule form
-│   ├── views/
-│   │   ├── inbox/index.tsx      # Unassigned tasks (no listId)
-│   │   ├── today/index.tsx      # Due today + overdue tasks
-│   │   ├── list/index.tsx       # Tasks for a specific list
-│   │   ├── calendar/
-│   │   │   ├── index.tsx        # FullCalendar with tasks + events
-│   │   │   └── event-detail-popover.tsx  # VEVENT detail popover
-│   │   ├── planner/index.tsx    # 14-day rolling planner with time estimates
-│   │   ├── search/index.tsx     # Full-text search across tasks
-│   │   └── settings/index.tsx   # Account management, sync config (1042 lines)
-│   ├── stores/
-│   │   ├── index.ts             # Barrel re-export of all stores
-│   │   ├── tasks.ts             # Task CRUD, Map<id, Task>, subscribeWithSelector
-│   │   ├── lists.ts             # List CRUD, TaskList[]
-│   │   ├── ui.ts                # UI state, persisted to localStorage
-│   │   ├── sync.ts              # CalDAV + GitHub sync orchestration (689 lines)
-│   │   └── events.ts            # Calendar events (VEVENT), not persisted to DB
-│   ├── db/
-│   │   ├── index.ts             # Barrel
-│   │   ├── repository.ts        # DatabaseAdapter interface + 6 repository factories
-│   │   ├── migrate.ts           # Sequential migration runner
-│   │   └── migrations/
-│   │       └── index.ts         # 9 SQL migrations defining full schema
-│   ├── hooks/
-│   │   └── use-auto-sync.ts     # Periodic + debounced pending-task sync
-│   ├── lib/
-│   │   ├── database.ts          # Tauri SQLite singleton + adapter factory
-│   │   └── utils.ts             # cn, generateId, date helpers
-│   ├── providers/
-│   │   ├── ipc.ts               # Tauri invoke() wrappers (snake/camel conversion)
-│   │   └── types.ts             # Wire types mirroring Rust structs
-│   └── types/
-│       ├── types.ts             # All domain types (Task, TaskList, accounts, etc.)
-│       └── index.ts             # Barrel
-│
-├── src-tauri/                   # TAURI BACKEND (Rust)
-│   ├── Cargo.toml               # Crate: tasky / tasky_lib
-│   ├── tauri.conf.json          # App config: window 1200x750, SQLite preload
-│   ├── build.rs                 # Tauri build script
-│   ├── capabilities/
-│   │   └── default.json         # Permissions: core, window, sql, notification
-│   ├── src/
-│   │   ├── main.rs              # Binary entry: calls tasky_lib::run()
-│   │   ├── lib.rs               # App setup: plugins, IPC commands, theme menu
-│   │   └── providers.rs         # Thin IPC wrappers delegating to tasky-providers
-│   ├── icons/                   # App icons (png, icns, ico)
-│   └── gen/                     # Tauri generated code
-│
-├── providers/                   # SYNC PROVIDERS (Rust library crate)
-│   ├── Cargo.toml               # Crate: tasky-providers
-│   └── src/
-│       ├── lib.rs               # SyncProvider trait, shared types, dispatch module
-│       ├── caldav/
-│       │   ├── mod.rs           # CalDavProvider: test, discover, sync, fetch_events
-│       │   └── ical.rs          # VTodo/VEvent iCal parsing and serialization
-│       └── github/
-│           └── mod.rs           # GitHubProvider: issues as tasks, repos as calendars
-│
-├── .agents/skills/              # Agent skills
-│   ├── planning/                # Project planning skill
-│   └── project-map/             # THIS SKILL - project structure reference
-│       ├── SKILL.md             # Overview, directory tree, architecture (this file)
-│       ├── data-model.md        # Types, SQL schema
-│       ├── stores.md            # Zustand stores, state shapes, actions
-│       ├── database.md          # Adapter, repositories, migrations
-│       ├── frontend.md          # Components, views, hooks
-│       ├── backend.md           # Tauri, IPC, Rust providers
-│       └── conventions.md       # Patterns, naming, gotchas, styling
-├── .vscode/                     # VS Code launch/tasks config
-├── .opencode/                   # OpenCode config
-└── .crush/                      # Crush config
-```
+
+The script lives at `.agents/skills/project-map/scripts/tree.js` (pure Node.js, no external dependencies). It recursively prints the project from the workspace root, directories first, sorted alphabetically.
 
 ---
 
