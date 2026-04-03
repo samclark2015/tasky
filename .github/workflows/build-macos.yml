@@ -38,34 +38,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Import codesigning certificate
-        env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -hex 12)
-
-          echo "$MACOS_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          security import "$CERTIFICATE_PATH" \
-            -P "$MACOS_CERTIFICATE_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-
-          security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
-
       - name: Build and release Tauri app
-        id: tauri-build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -79,34 +52,3 @@ jobs:
           prerelease: false
           updaterJsonPreferNsis: true
           args: '--target aarch64-apple-darwin'
-
-      - name: Sign DMG and re-upload to release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          RELEASE_ID=$(echo '${{ steps.tauri-build.outputs.releaseId }}')
-          for dmg in src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg; do
-            if [ -f "$dmg" ]; then
-              echo "Signing $dmg"
-              codesign --force --sign "Tasky Self-Signed" "$dmg"
-              codesign --verify --verbose "$dmg"
-
-              ASSET_NAME=$(basename "$dmg")
-              echo "Replacing release asset: $ASSET_NAME"
-
-              # Delete the existing unsigned asset
-              ASSET_ID=$(gh api "repos/${{ github.repository }}/releases/${RELEASE_ID}/assets" \
-                --jq ".[] | select(.name == \"${ASSET_NAME}\") | .id")
-              if [ -n "$ASSET_ID" ]; then
-                gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${ASSET_ID}"
-              fi
-
-              # Upload the signed DMG
-              gh release upload "$(gh api "repos/${{ github.repository }}/releases/${RELEASE_ID}" --jq .tag_name)" \
-                "$dmg" --clobber
-            fi
-          done
-
-      - name: Clean up keychain
-        if: always()
-        run: security delete-keychain $RUNNER_TEMP/app-signing.keychain-db
