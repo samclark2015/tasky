@@ -2,7 +2,7 @@
 
 ## Current Status
 
-**Phase:** Phase 6 – Provider Abstraction ✅ COMPLETE  
+**Phase:** Phase 7 – Mobile Responsive UI (complete)  
 **Last Updated:** April 3, 2026
 
 ## Phase Completion
@@ -11,8 +11,9 @@
 - [x] Phase 2: Core Task Management
 - [x] Phase 3: Calendar & Planner Views
 - [x] Phase 4: CalDAV Sync
-- [ ] Phase 5: Polish & Notifications
+- [x] Phase 5: Polish & Notifications
 - [x] Phase 6: Provider Abstraction
+- [x] Phase 7: Mobile Responsive UI
 
 ## Detailed Progress
 
@@ -135,8 +136,30 @@ None currently.
 
 ## Notes
 
+### Phase 7: Mobile Responsive UI ✅ (completed Apr 3 2026)
+- [x] 7.1 Foundation: `framer-motion` installed, `useIsMobile` hook, `moreSheetOpen` + `setMoreSheetOpen` in `useUIStore`, `viewport-fit=cover` in `index.html`, safe area CSS vars, `touch-action: manipulation` on buttons, `overscroll-contain` utility class
+- [x] 7.2 Responsive AppShell: sidebar `hidden md:flex`, no details column on mobile, no drag region on mobile, bottom padding = `calc(56px + env(safe-area-inset-bottom))`
+- [x] 7.3 Bottom Navigation Bar: `src/components/layout/bottom-nav.tsx` — 5 tabs (Today/Inbox/Calendar/Planner/More), `motion.span layoutId="nav-indicator"`, fixed bottom `z-40`, safe area padding
+- [x] 7.4 "More" Bottom Sheet: `src/components/layout/more-sheet.tsx` — lists, New List, Settings; drag-to-dismiss, `createPortal`, `z-50`
+- [x] 7.5 Details Panel as Mobile Bottom Sheet: `src/components/layout/bottom-sheet.tsx` — reusable `BottomSheet` wrapper; `AppShell` renders it instead of the right column on mobile
+- [x] 7.6 FAB: `src/components/ui/fab.tsx` — `bottom-20 right-4`, `z-40`, `whileTap` scale animation; rendered in `App.tsx` when mobile
+- [x] 7.7 Page Transitions: `ViewRouter` wraps views in `AnimatePresence mode="wait"` + directional `motion.div` on mobile; `VIEW_ORDER` map drives direction
+- [x] 7.8 View & Component Adaptations: `CalendarView` uses `dayGridMonth` + simplified toolbar on mobile; `TaskItem` adds `py-3` + `useLongPress` action sheet on mobile; `use-long-press.ts` hook created
+- [x] 7.9 Polish & Safe Areas: keyboard shortcuts early-return when `isMobile`; z-index audit (FAB+bottom nav: z-40, sheets+backdrops: z-50); `overscroll-contain` on sheet scroll containers
+- [x] 7.10 Project Map Update: `frontend.md` updated with all new hooks and components; `SKILL.md` updated with Framer Motion and Android platform
+
+### Phase 7: Mobile Responsive UI Implementation Notes (Apr 3 2026)
+- `useIsMobile()` is a standalone hook (not a context) — fine to call in multiple components, each gets its own resize listener (cheap enough for the few components that need it)
+- Framer Motion `drag="y"` on a sheet intercepts all pointer events including inner scrolls — solve by calling `e.stopPropagation()` on the `onPointerDown` of the inner scroll container
+- Bottom sheet drag handle is decorative only — the `drag="y"` applies to the whole `motion.div`. This is fine; inner content scroll works because of the `stopPropagation` trick above
+- `pb-[env(safe-area-inset-bottom,0px)]` and `pb-16` conflict (last one wins in CSS) — always use `calc()` in inline `style` when combining: `calc(56px + env(safe-area-inset-bottom, 0px))`
+- FAB `bottom-20` = 80px, placing it comfortably above the 56px bottom nav
+- Page transition direction is tracked via `useRef` (not state) to avoid extra renders; direction computed before updating `previousViewRef`
+- `AnimatePresence mode="wait"` prevents old and new views from overlapping during transition; `initial={false}` skips the entry animation on first render
+- Calendar `initialView` is set once at mount — changing `isMobile` after mount won't re-initialize FullCalendar; this is intentional (users don't resize mid-session on phones)
+- TaskItem's long-press action sheet uses `BottomSheet` (same component as details panel) — renders via portal so z-stacking is correct even when nested deep in a list
+
 ### Phase 1 Implementation Notes
-- Using `npx pnpm` as pnpm is not in PATH directly (available via npx)
 - Rust/Cargo toolchain: nightly 1.92.0
 - Icons are placeholder solid-color PNGs (indigo #6366f1); replace before shipping
 - tauri-plugin-sql configured to preload sqlite:tasky.db
@@ -241,7 +264,6 @@ None currently.
 - Debounce delay: 30 seconds (constant `DEBOUNCE_DELAY_MS`)
 
 ### Phase 6: Provider Abstraction Implementation Notes (Apr 3 2026)
-- `ProviderMap.id` is the primary key (a UUID), NOT `listId`. Always use `map.id` for unlink/update operations.
 - `ProviderMap.listId` is nullable — `null` for events-only CalDAV calendars (no associated task list)
 - Credentials shape: CalDAV → `{ server_url, username, password }`; GitHub → `{ token }` (stored as JSON in `provider_accounts.credentials`)
 - Map settings shape: CalDAV → `{ events_only: bool, sync_token: string|null }`; GitHub → `{ query: string|null, read_only: bool }`

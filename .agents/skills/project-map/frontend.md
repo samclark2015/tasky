@@ -9,10 +9,11 @@ Mounts React at `#root`. Provider nesting: `StrictMode > ThemeProvider > AppProv
 ## App.tsx
 
 Root component. Contains:
-- `ViewRouter` -- switch on `ViewType` to render view components
-- Keyboard shortcuts (Cmd+F, n, Escape, 1-4)
+- `ViewRouter` -- switch on `ViewType` to render view components; on mobile wraps output in Framer Motion `AnimatePresence mode="wait"` with direction-aware slide transitions
+- Keyboard shortcuts (Cmd+F, n, Escape, 1-4) -- **disabled on mobile** (early return if `isMobile`)
 - Theme sync to Tauri backend via `invoke('sync_theme', { theme })`
 - Listens for `set-theme` events from backend
+- On mobile: renders `<BottomNav />`, `<MoreSheet />`, and `<FAB />` outside `AppShell`
 
 ## App Provider (src/components/app-provider.tsx)
 
@@ -37,13 +38,18 @@ Reads theme from `useUIStore`, applies `dark` CSS class on `document.documentEle
 
 ### AppShell (app-shell.tsx)
 
-3-column flexbox: sidebar | main | details panel.
+**Desktop:** 3-column flexbox: sidebar | main | details panel.
 - Sidebar width: `w-60` expanded, `w-14` collapsed (via `sidebarOpen` state)
 - Main area: `data-tauri-drag-region` div (h-8) for custom title bar, then `children`
 - Details panel: `w-80`, conditional on `detailsPanelOpen`
 
+**Mobile:** Sidebar hidden, details panel replaced by `<BottomSheet>`. Drag region removed. Bottom padding = `calc(56px + env(safe-area-inset-bottom))` to clear the bottom nav.
+
+Uses `useIsMobile()` to branch between desktop and mobile layouts.
+
 ### Sidebar (sidebar.tsx)
 
+- `hidden md:flex` — invisible on mobile (bottom nav replaces it)
 - 5 nav items: Today, Inbox, Search, Calendar, Planner (with lucide icons)
 - User-created task lists with colored dots
 - Footer: Sync button (shows status), Settings button, New List button
@@ -63,6 +69,32 @@ Full task detail editor. Supports inline editing for all fields:
 ### ViewHeader (view-header.tsx)
 
 Simple presentational component: renders children (title) on left, optional `actions` prop on right, with bottom border.
+
+### BottomSheet (bottom-sheet.tsx)
+
+Reusable mobile bottom sheet. Props: `open`, `onClose`, `children`.
+- Rendered via `createPortal` to `document.body`
+- Framer Motion: slide up from bottom, `drag="y"`, dismisses when dragged > 100px
+- Faded backdrop (tap to close)
+- `h-[90vh]`, rounded top corners, scrollable inner content
+- `z-50`
+
+### BottomNav (bottom-nav.tsx)
+
+Mobile-only bottom navigation bar (5 tabs).
+- Tabs: Today, Inbox, Calendar, Planner, More (···)
+- Active indicator: `motion.span` with `layoutId="nav-indicator"` (shared layout animation)
+- Fixed bottom, `z-40`, `min-h-[56px]`, safe area inset padding
+- More tab opens `MoreSheet` instead of navigating
+
+### MoreSheet (more-sheet.tsx)
+
+Mobile "More" bottom sheet exposing lists and settings.
+- Controlled by `moreSheetOpen` in `useUIStore`
+- Lists section: tappable rows navigate to list view
+- New List button, Settings row
+- Drag-to-dismiss, faded backdrop
+- `z-50`
 
 ---
 
@@ -97,9 +129,9 @@ Recursive task row component. Renders:
 - Subtask progress count
 - Due date (red if overdue)
 - Priority dot
-- Hover-visible "add subtask" button
-- Right-click opens `TaskContextMenu`
-- Click selects task (opens details panel)
+- **Desktop:** hover-visible "add subtask" button; right-click opens `TaskContextMenu`
+- **Mobile:** `py-3` for taller touch targets; `useLongPress` fires action sheet (edit/add subtask/delete)
+- Click selects task (opens details panel / bottom sheet)
 
 **Recursive:** renders child `TaskItem` components with increasing `depth` (indentation via inline `style`).
 
@@ -156,9 +188,10 @@ Toggle-based recurrence form. When enabled:
 - "..." button opens ListModal for editing
 - Guard: "List not found" when no match
 
-### CalendarView (calendar/index.tsx) -- 373 lines
+### CalendarView (calendar/index.tsx) -- 397+ lines
 
-- FullCalendar (dayGridMonth, timeGridWeek [initial], timeGridDay)
+- **Desktop:** FullCalendar initial view = `timeGridWeek`, full toolbar with day/week/month switcher
+- **Mobile:** initial view = `dayGridMonth`, simplified toolbar (prev/next + title only)
 - Tasks as events, color-coded by list color or priority (high=red, medium=yellow, low=gray)
 - VEVENT events from CalDAV, filterable by calendar visibility toggles
 - Drag-and-drop: updates `dueDate`; resize updates `dueDate` + `timeEstimate`
@@ -211,8 +244,22 @@ Both are no-ops when `isSyncing` is true. Uses stable `adapterRef` to avoid re-r
 
 Mounted via `AutoSyncMount` renderless component in `AppProvider`.
 
+### useIsMobile (use-is-mobile.ts)
+
+Returns `boolean` indicating whether `window.innerWidth < 768`. Updates live on resize (16ms debounce). Used throughout app for desktop/mobile layout branching.
+
+### useLongPress (use-long-press.ts)
+
+Returns touch event handlers `{ onTouchStart, onTouchEnd, onTouchMove }`. Fires `onLongPress` callback after `delay` ms (default 500) if touch moves < 10px. Used by `TaskItem` to open the mobile action sheet.
+
 ---
 
 ## UI Primitives (src/components/ui/)
 
-**Currently empty.** All UI is built directly with Tailwind utility classes + Radix primitives (Dialog, DropdownMenu). No shared Button/Input/Card components exist.
+### FAB (fab.tsx)
+
+Floating action button for mobile new-task creation.
+- Fixed position: `bottom-20 right-4`, `z-40`
+- Framer Motion: `whileTap={{ scale: 0.9 }}`, `whileHover={{ scale: 1.05 }}`
+- Calls `onClick` (sets `showNewTask = true` in App.tsx)
+- Rendered only when `isMobile === true`

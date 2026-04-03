@@ -29,6 +29,12 @@
     --sidebar-border: 214.3 31.8% 91.4%;
     --sidebar-accent: 210 40% 94%;
     --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+
+    /* Safe area insets (Android / notched devices) */
+    --safe-area-inset-top: env(safe-area-inset-top, 0px);
+    --safe-area-inset-right: env(safe-area-inset-right, 0px);
+    --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-inset-left: env(safe-area-inset-left, 0px);
   }
 
   .dark {
@@ -64,6 +70,10 @@
     @apply border-border;
     user-select: none;
     -webkit-user-select: none;
+  }
+
+  button, a, [role="button"] {
+    touch-action: manipulation;
   }
 
   input, textarea, [contenteditable] {
@@ -178,3 +188,9 @@
   border-top-color: hsl(var(--primary));
   border-bottom-color: hsl(var(--primary));
 }
+
+/* Mobile utility classes */
+.overscroll-contain {
+  overscroll-behavior: contain;
+}
+

@@ -1,4 +1,5 @@
 import { useRef, useMemo, useCallback, useState, useEffect } from 'react';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -25,6 +26,7 @@ export function CalendarView() {
   const { selectTask } = useUIStore();
   const { events: calendarEvents, fetchEvents, calendarVisibility, toggleCalendarVisibility } = useEventStore();
   const { accounts, maps } = useSyncStore();
+  const isMobile = useIsMobile();
   const calendarMaps = useMemo(
     () => maps.filter((m) => {
       const account = accounts.find((a) => a.id === m.accountId);
@@ -343,12 +345,15 @@ export function CalendarView() {
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-            initialView="timeGridWeek"
-            headerToolbar={{
-              left: 'prev,next today',
-              center: 'title',
-              right: 'dayGridMonth,timeGridWeek,timeGridDay',
-            }}
+            initialView={isMobile ? 'dayGridMonth' : 'timeGridWeek'}
+            headerToolbar={isMobile
+              ? { left: 'prev,next', center: 'title', right: '' }
+              : {
+                  left: 'prev,next today',
+                  center: 'title',
+                  right: 'dayGridMonth,timeGridWeek,timeGridDay',
+                }
+            }
             height="100%"
             events={events}
             editable={true}

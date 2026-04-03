@@ -6,7 +6,8 @@ A cross-platform task management app for todos, tasks, and routines with CalDAV 
 
 **Target:** MVP in ~6 weeks  
 **Primary Platform:** Desktop (macOS, Windows, Linux)  
-**Future Platforms:** iOS, Android, Web
+**Supported Platforms:** Desktop (macOS, Windows, Linux), Android  
+**Future Platforms:** iOS, Web
 
 ## Tech Stack
 
@@ -15,6 +16,7 @@ A cross-platform task management app for todos, tasks, and routines with CalDAV 
 | Framework | Tauri 2.x |
 | Frontend | React 18 + TypeScript |
 | Styling | shadcn/ui + Radix UI + Tailwind CSS |
+| Animations | Framer Motion |
 | State Management | Zustand |
 | Local Database | SQLite (via tauri-plugin-sql) |
 | Calendar UI | FullCalendar |
@@ -40,8 +42,9 @@ A cross-platform task management app for todos, tasks, and routines with CalDAV 
 - All timestamps in UTC, displayed in local timezone
 
 ### UI/UX
-- Three-panel layout (sidebar, main, details)
-- Unified design for MVP (platform-adaptive post-MVP)
+- Three-panel layout (sidebar, main, details) on desktop
+- Mobile layout: single-column, bottom navigation bar, bottom sheets for details/more
+- `useIsMobile()` hook (viewport < 768px) drives layout branching — single codebase
 - System notifications only (no in-app notification center)
 
 ## Phase Overview
@@ -54,6 +57,7 @@ A cross-platform task management app for todos, tasks, and routines with CalDAV 
 | 4 | CalDAV Sync | Week 4-5 | Two-way sync with CalDAV servers |
 | 5 | Polish | Week 5-6 | Notifications, testing, builds |
 | 6 | Provider Abstraction | Week 7-8 | Make TS layer fully provider-agnostic |
+| 7 | Mobile Responsive UI | Week 9 | Android support: bottom nav, sheets, FAB, touch |
 
 ## Project Structure
 
@@ -133,3 +137,4 @@ interface CalendarEvent {
 - [ ] CalDAV sync with Fastmail/iCloud/standard servers
 - [ ] System notifications for due tasks
 - [ ] Desktop builds for Mac/Windows/Linux
+- [ ] Android build

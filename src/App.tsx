@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useUIStore, type ViewType } from '@/stores';
 import { useTheme } from '@/components/theme-provider';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { AppShell } from '@/components/layout';
+import { BottomNav } from '@/components/layout/bottom-nav';
+import { MoreSheet } from '@/components/layout/more-sheet';
+import { FAB } from '@/components/ui/fab';
 import { TodayView } from '@/views/today';
 import { InboxView } from '@/views/inbox';
 import { CalendarView } from '@/views/calendar';
@@ -16,7 +21,17 @@ import { TaskModal } from '@/components/modals/task-modal';
 import { SearchModal } from '@/components/modals/search-modal';
 import { UpdateModal } from '@/components/modals/update-modal';
 
-function ViewRouter({ view }: { view: ViewType }) {
+const VIEW_ORDER: Record<ViewType, number> = {
+  today: 0,
+  inbox: 1,
+  calendar: 2,
+  planner: 3,
+  list: 3,
+  search: 4,
+  settings: 5,
+};
+
+function ViewContent({ view }: { view: ViewType }) {
   switch (view) {
     case 'today':    return <TodayView />;
     case 'inbox':    return <InboxView />;
@@ -29,9 +44,44 @@ function ViewRouter({ view }: { view: ViewType }) {
   }
 }
 
+function ViewRouter({ view }: { view: ViewType }) {
+  const isMobile = useIsMobile();
+  const previousViewRef = useRef<ViewType>(view);
+  const directionRef = useRef<number>(1);
+
+  // Compute slide direction before updating previousView
+  if (previousViewRef.current !== view) {
+    directionRef.current =
+      VIEW_ORDER[view] >= VIEW_ORDER[previousViewRef.current] ? 1 : -1;
+    previousViewRef.current = view;
+  }
+
+  const direction = directionRef.current;
+
+  if (!isMobile) {
+    return <ViewContent view={view} />;
+  }
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={view}
+        className="flex-1 min-h-0 flex flex-col overflow-hidden"
+        initial={{ x: direction * 40, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: direction * -40, opacity: 0 }}
+        transition={{ duration: 0.2, ease: 'easeInOut' }}
+      >
+        <ViewContent view={view} />
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export function App() {
   const { currentView, navigateTo, selectTask, setSearchOpen } = useUIStore();
   const { theme, setTheme } = useTheme();
+  const isMobile = useIsMobile();
   const [showNewTask, setShowNewTask] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
 
@@ -61,6 +111,9 @@ export function App() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Disable all keyboard shortcuts on mobile
+      if (isMobile) return;
+
       const tag = (e.target as HTMLElement).tagName;
       const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
@@ -86,13 +139,18 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigateTo, selectTask, setSearchOpen]);
+  }, [isMobile, navigateTo, selectTask, setSearchOpen]);
 
   return (
     <>
       <AppShell>
         <ViewRouter view={currentView} />
       </AppShell>
+
+      {/* Mobile-only chrome */}
+      {isMobile && <BottomNav />}
+      {isMobile && <MoreSheet />}
+      {isMobile && <FAB onClick={() => setShowNewTask(true)} />}
 
       {showNewTask && (
         <TaskModal onClose={() => setShowNewTask(false)} />

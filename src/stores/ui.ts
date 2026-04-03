@@ -15,6 +15,7 @@ interface UIStore {
   searchQuery: string;
   searchOpen: boolean;
   syncIntervalMinutes: SyncInterval;
+  moreSheetOpen: boolean;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   toggleDetailsPanel: () => void;
@@ -25,6 +26,7 @@ interface UIStore {
   setSearchQuery: (q: string) => void;
   setSearchOpen: (open: boolean) => void;
   setSyncInterval: (interval: SyncInterval) => void;
+  setMoreSheetOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -39,6 +41,7 @@ export const useUIStore = create<UIStore>()(
       searchQuery: '',
       searchOpen: false,
       syncIntervalMinutes: null,
+      moreSheetOpen: false,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
@@ -55,6 +58,7 @@ export const useUIStore = create<UIStore>()(
       setSearchQuery: (q) => set({ searchQuery: q }),
       setSearchOpen: (open) => set({ searchOpen: open }),
       setSyncInterval: (interval) => set({ syncIntervalMinutes: interval }),
+      setMoreSheetOpen: (open) => set({ moreSheetOpen: open }),
     }),
     {
       name: 'tasky-ui',

@@ -31,8 +31,9 @@ This is a **modular** living reference for the Tasky codebase. The root file (th
 |---|---|
 | Name | Tasky (`com.tasky.app`) |
 | Version | 0.0.1 |
-| Purpose | Native desktop task management with CalDAV and GitHub sync |
-| Frontend | TypeScript, React 18, Zustand, Tailwind CSS, Vite |
+| Purpose | Native desktop + mobile task management with CalDAV and GitHub sync |
+| Platforms | macOS, Windows, Linux (desktop); Android (mobile — responsive UI) |
+| Frontend | TypeScript, React 18, Zustand, Tailwind CSS, Vite, Framer Motion |
 | Backend | Rust (Tauri 2.0 shell), SQLite via `tauri-plugin-sql` |
 | Package manager | pnpm |
 | Rust workspace | Root `Cargo.toml` with members `src-tauri` and `providers` |
