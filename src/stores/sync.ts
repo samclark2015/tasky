@@ -75,7 +75,7 @@ interface SyncStore {
   updateMap: (
     adapter: DatabaseAdapter,
     mapId: string,
-    settings: Record<string, unknown>,
+    updates: { settings?: Record<string, unknown>; sourceName?: string | null },
   ) => Promise<void>;
 
   // ── Sync actions ───────────────────────────────────────────────────────────
@@ -211,13 +211,18 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     set((state) => ({ maps: state.maps.filter((m) => m.id !== mapId) }));
   },
 
-  async updateMap(adapter, mapId, settings) {
+  async updateMap(adapter, mapId, updates) {
     const mapRepo = createProviderMapRepository(adapter);
-    await mapRepo.update(mapId, { settings });
+    await mapRepo.update(mapId, updates);
     set((state) => ({
       maps: state.maps.map((m) =>
         m.id === mapId
-          ? { ...m, settings, updatedAt: new Date().toISOString() }
+          ? {
+              ...m,
+              ...(updates.settings !== undefined && { settings: updates.settings }),
+              ...(updates.sourceName !== undefined && { sourceName: updates.sourceName }),
+              updatedAt: new Date().toISOString(),
+            }
           : m
       ),
     }));

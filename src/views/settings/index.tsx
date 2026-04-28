@@ -564,7 +564,7 @@ function SourceSettingsInline({
   async function saveField(key: string, value: unknown) {
     const next = { ...values, [key]: value };
     setValues(next);
-    await updateMap(adapter, map.id, next);
+    await updateMap(adapter, map.id, { settings: next });
   }
 
   // Only show user-facing fields (exclude internal keys like sync_token)
